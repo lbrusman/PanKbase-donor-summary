@@ -1,10 +1,6 @@
 #
-# This is a Shiny web application. You can run the application by clicking
-# the 'Run App' button above.
-#
-# Find out more about building applications with Shiny here:
-#
-#    http://shiny.rstudio.com/
+# This is the Shiny web application that runs the donor summary browser for PanKbase
+# See it live at https://dev.pankbase.org/donor-metadata.html
 #
 
 #load packages
@@ -176,7 +172,7 @@ ui <- fluidPage(
                             bsTooltip(id = "RemoveNA",
                                       title = "Choose whether to remove donors whose metadata for that variable is not currently in PanKbase"),
                             downloadButton("DownloadStacked", 
-                                           "Download Stacked Barplot")
+                                           "Download Stacked Bar Plot")
                             
                           ),
                           mainPanel(
@@ -467,16 +463,29 @@ server <- function(input, output, session) {
       metadata_summ <- metadata_summ[metadata_summ[,1] != "unknown" & metadata_summ[,1] != "Unknown" & metadata_summ[,1] != "NA" & metadata_summ[,1] != "",]
     }
     
-    #make a plot
-    ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable], y=perc, x = input$DataFilter)) + 
-      geom_bar(stat="identity", color = "white") +
-      scale_fill_manual(values = collection_pal) +
-      labs(y = "Percent of Donors",
-           fill = input$Variable) + 
-      theme(plot.margin = margin(1.5,1,1.5,1, "cm"),
-            axis.title.x = element_blank(),
-            axis.text.x = element_blank(),
-            axis.ticks.x = element_blank())
+    if (nrow(metadata_summ) > 0) {
+      #make a plot if there is data to plot
+      p <- ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable], y=perc, x = input$DataFilter)) + 
+            geom_bar(stat="identity", color = "white") +
+            scale_fill_manual(values = collection_pal) +
+            labs(y = "Percent of Donors",
+                 fill = input$Variable) + 
+            theme(plot.margin = margin(1.5,1,1.5,1, "cm"),
+                  axis.title.x = element_blank(),
+                  axis.text.x = element_blank(),
+                  axis.ticks.x = element_blank())
+    }
+    
+    else {
+      #if no data, print error message
+      par(mar = c(0,0,0,0))
+      p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+      p <- p + text(x = 0.5, y = 0.5, paste("No data fit these criteria.\n",
+                                            "Please select other parameters.\n"), 
+                    cex = 1.6, col = "black")
+    }
+    print(p)
+    
   }
   
   output$stackedBar <- renderPlot({
@@ -993,28 +1002,28 @@ server <- function(input, output, session) {
 
   #make plot downloaders
   output$DownloadBar <- downloadHandler(
-    filename = function() { paste0("barplot_", Sys.time(), ".png") },
+    filename = function() { paste0("PanKbase_BarPlot_", Sys.time(), ".png") },
     content = function(file) {
       ggsave(file, plot = barPlot_fxn(), width = shinybrowser::get_width()*4, height = shinybrowser::get_height()*4, units="px", bg = "white")
     }
   )
   
   output$DownloadStacked <- downloadHandler(
-    filename = function() {paste0("stacked_barplot_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_StackedBarPlot_", Sys.time(), ".png")},
     content = function(file) {
       ggsave(file, plot = stackedBar_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px", bg = "white")
     }
   )
   
   output$DownloadRidges <- downloadHandler(
-    filename = function() {paste0("ridgeline_plot_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_RidgelinePlot_", Sys.time(), ".png")},
     content = function(file) {
       ggsave(file, plot = ridgelines_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px", bg = "white")
     }
   )
   
   output$DownloadHeatmap <- downloadHandler(
-    filename = function() {paste0("cluster_heatmap_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_ClusterHeatmap_", Sys.time(), ".png")},
     content = function(file) {
       png(file, width = 12, height = 8, units = "in", res = 300) 
       heatmap_fxn()
@@ -1023,21 +1032,21 @@ server <- function(input, output, session) {
   )
   
   output$DownloadCorrMat <- downloadHandler(
-    filename = function() {paste0("correlation_matrix_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_CorrelationMatrix_", Sys.time(), ".png")},
     content = function(file) {
-      ggsave(file, plot = corr_plot_fxn(), width = shinybrowser::get_width()*2, height = shinybrowser::get_height()*2, units = "px", bg = "white")
+      ggsave(file, plot = corr_plot_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*3, units = "px", bg = "white")
     }
   )
   
   output$DownloadScatter <- downloadHandler(
-    filename = function() {paste0("scatter_plot_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_ScatterPlot_", Sys.time(), ".png")},
     content = function(file) {
       ggsave(file, plot = scatterPlot_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px", bg = "white")
     }
   )
   
   output$DownloadPCA <- downloadHandler(
-    filename = function() {paste0("PCA_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_PCA_", Sys.time(), ".png")},
     content = function(file) {
       png(file, width = 10, height = 8, units = "in", res = 300)
       pca_fxn()
@@ -1046,7 +1055,7 @@ server <- function(input, output, session) {
   )
   
   output$DownloadContribs <- downloadHandler(
-    filename = function() {paste0("PCA_contributions_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_PCA_Contributions_", Sys.time(), ".png")},
     content = function(file) {
       png(file, width = 12, height = 8, units = "in", res = 300) 
       pca_contribs_fxn()
@@ -1055,7 +1064,7 @@ server <- function(input, output, session) {
   )
   
   output$DownloadDonorMat <- downloadHandler(
-    filename = function() {paste0("donor_assay_matrix_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_DonorAssayMatrix_", Sys.time(), ".png")},
     content = function(file) {
       png(file, width = 12, height = 4, units = "in", res = 300) 
       donor_matrix_fxn()
@@ -1064,7 +1073,7 @@ server <- function(input, output, session) {
   )
   
   output$DownloadUpset <- downloadHandler(
-    filename = function() {paste0("upset_plot_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_UpSetPlot_", Sys.time(), ".png")},
     content = function(file) {
       png(file, width = 12, height = 6, units = "in", res = 300)
       upset_fxn()
@@ -1073,14 +1082,14 @@ server <- function(input, output, session) {
   )
   
   output$DownloadDonorStacked <- downloadHandler(
-    filename = function() {paste0("donor_stacked_barplot_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_DonorStackedBarPlot_", Sys.time(), ".png")},
     content = function(file) {
       ggsave(file, plot = donor_stacked_bar_fxn(), width = 12, height = 8, units = "in", bg = "white")
     }
   )
   
   output$DownloadVenn <- downloadHandler(
-    filename = function() {paste0("venn_diagram_", Sys.time(), ".png")},
+    filename = function() {paste0("PanKbase_VennDiagram_", Sys.time(), ".png")},
     content = function(file) {
       ggsave(file, plot = venn_diag_fxn(), width = 12, height = 8, units = "in", bg = "white")
     }
