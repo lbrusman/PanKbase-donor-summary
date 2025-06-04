@@ -19,7 +19,6 @@ library(corrplot)
 library(factoextra)
 library(ggvenn)
 library(RColorBrewer)
-# library(palettetown)
 library(forcats)
 library(shinybrowser)
 library(colorRamp2)
@@ -29,15 +28,46 @@ library(ggcorrplot)
 library(reshape2)
 library(viridis)
 
+set.seed(123)
 
 #read in metadata files
 metadata <- read.csv("data/pankbase_human_donor_report_2025_5_27_17h_8m.csv")
-metadata$Description.of.diabetes.status <- ifelse(metadata$Description.of.diabetes.status == "non-diabetic", "No diabetes", ifelse(metadata$Description.of.diabetes.status == "type 1 diabetes", "Type 1 diabetes", ifelse(metadata$Description.of.diabetes.status == "type 2 diabetes", "Type 2 diabetes", metadata$Description.of.diabetes.status)))
-metadata$Ethnicities <- ifelse(metadata$Ethnicities == "Caucasian", "White", metadata$Ethnicities)
 
 #filter out "test" sample
-metadata <- metadata[metadata$Collections != "",]
-#change names of diabetes status
+metadata <- metadata[metadata$ID != "<NA>",]
+
+#change capitalization of some metadata fields
+metadata$Description.of.diabetes.status <- recode(metadata$Description.of.diabetes.status,
+                                                  "non-diabetic" = "No diabetes",
+                                                  "type 1 diabetes" = "Type 1 diabetes",
+                                                  "type 2 diabetes" = "Type 2 diabetes",
+                                                  "cystic fibrosis diabetes" = "Cystic fibrosis diabetes",
+                                                  "gestational diabetes" = "Gestational diabetes",
+                                                  "diabetes unspecified" = "Diabetes unspecified",
+                                                  "steroid-induced diabetes" = "Steroid-induced diabetes",
+                                                  "monogenic diabetes" = "Monogenic diabetes")
+
+metadata$Ethnicities <- recode(na_if(metadata$Ethnicities, ""),
+                               "Caucasian" = "White",
+                               .missing = "Unknown")
+metadata$Sex <- recode(metadata$Sex,
+                       female = "Female",
+                       male = "Male")
+metadata$Collections <- recode(metadata$Collections,
+                               "IIDP,Prodo" = "IIDP")
+
+#rename values that have different capitalization so they get grouped together and change blanks to unknown
+metadata$Cause.of.Death <- recode(na_if(metadata$Cause.of.Death, ""),
+                                  "Cerebrovascular/stroke" = "Cerebrovascular/Stroke",
+                                  "Head Trauma" = "Head trauma",
+                                  "ICH/stroke" = "ICH/Stroke",
+                                  "Cerebral Edema (DKA)" = "Cerebral edema (DKA)",
+                                  "IHC" = "ICH",
+                                  .missing = "Unknown")
+
+
+
+#rename columns to friendly names
 metadata <- metadata %>% rename("Program" = Collections,
                                 "Age (years)" = Age..years.,
                                 "C. Peptide (ng/ml)" = C.Peptide..ng.ml.,
@@ -51,44 +81,23 @@ metadata <- metadata %>% rename("Program" = Collections,
                                 "Cause of death" = Cause.of.Death,
                                 "Ethnicity" = Ethnicities)
 
-metadata$Program <- ifelse(metadata$Program == "IIDP,Prodo", "IIDP", metadata$Program)
-
-#rename values that have different capitalization so they get grouped together
-metadata$`Cause of death` <- ifelse(metadata$`Cause of death` == "Cerebrovascular/stroke", "Cerebrovascular/Stroke", metadata$`Cause of death`)
-metadata$`Cause of death` <- ifelse(metadata$`Cause of death` == "Head trauma", "Head Trauma", metadata$`Cause of death`)
-
-#change capitalization of some fields
-metadata$Sex <- ifelse(metadata$Sex == "female", "Female",
-                       ifelse(metadata$Sex == "male", "Male",
-                              metadata$Sex))
-
-metadata$`Description of diabetes status` <- ifelse(metadata$`Description of diabetes status` == "cystic fibrosis diabetes", "Cystic fibrosis diabetes", metadata$`Description of diabetes status`)
-metadata$`Description of diabetes status` <- ifelse(metadata$`Description of diabetes status` == "gestational diabetes", "Gestational diabetes", metadata$`Description of diabetes status`)
-metadata$`Description of diabetes status` <- ifelse(metadata$`Description of diabetes status` == "monogenic diabetes", "Monogenic diabetes", metadata$`Description of diabetes status`)
-metadata$`Description of diabetes status` <- ifelse(metadata$`Description of diabetes status` == "diabetes unspecified", "Diabetes unspecified", metadata$`Description of diabetes status`)
-metadata$`Description of diabetes status` <- ifelse(metadata$`Description of diabetes status` == "steroid-induced diabetes", "Steroid-induced diabetes", metadata$`Description of diabetes status`)
-
-#rename some NAs to "unknown"
-metadata$Ethnicity <- ifelse(metadata$Ethnicity == "", "Unknown", metadata$Ethnicity)
-metadata$`Cause of death` <- ifelse(metadata$`Cause of death` == "", "Unknown", metadata$`Cause of death`)
+#change NA AAB status to unknown
 metadata <- metadata %>% mutate(across(starts_with("AAB."), ~ifelse( is.na(.x), "Unknown", .x)))
+
 metadata <- metadata %>% rename("AAB-GADA Positive" = AAB.GADA.POSITIVE,
                                 "AAB-IA2 Positive" = AAB.IA2.POSITIVE,
                                 "AAB-IAA Positive" = AAB.IAA.POSITIVE,
                                 "AAB-ZNT8 Positive" = AAB.ZNT8.POSITIVE)
 
-
-#get all categorical variables. we actually don't want to plot all of these though
+#get all categorical variables we want to plot
 categorical_vars <- c("Program", "Description of diabetes status", "Cause of death", "Sex", "Ethnicity",
                       "AAB-GADA Positive", "AAB-IA2 Positive", "AAB-IAA Positive", "AAB-ZNT8 Positive")
-all_continuous_vars <- metadata %>% select_if(is.numeric) %>% colnames()
+#get all continuous variables we want to plot
 continuous_vars <- c("Age (years)", "BMI", "C. Peptide (ng/ml)", "HbA1C percentage", "Hospital stay (hours)",
-                     "AAB-GADA value (unit/ml)", "AAB-IA2 value (unit/ml)", 
-                     "AAB-IAA value (unit/ml)",
-                     "AAB-ZNT8 value (unit/ml)")
+                     "AAB-GADA value (unit/ml)", "AAB-IA2 value (unit/ml)", "AAB-IAA value (unit/ml)", "AAB-ZNT8 value (unit/ml)")
 
-metadata_mini <- metadata[,c("Program", "Description of diabetes status", "Cause of death", "Sex", "Ethnicity",
-                             "AAB-GADA Positive", "AAB-IA2 Positive", "AAB-IAA Positive", "AAB-ZNT8 Positive")]
+#subset df to most important cols
+metadata_mini <- metadata[,categorical_vars]
 
 ## Wrangle donor-by-assay data here
 data_avail <- metadata %>% select(c("ID", "Data.Available")) %>% filter(Data.Available != "")
@@ -107,10 +116,12 @@ for (d in unique(data_avail$ID)) {
   
 }
 
-all_donor_df$dataset <- ifelse(all_donor_df$dataset == "HLA_typing", "HLA typing", 
-                           ifelse(all_donor_df$dataset == "RNAseq", "RNA-seq",
-                                  ifelse(all_donor_df$dataset == "scRNAseq", "scRNA-seq",
-                                         ifelse(all_donor_df$dataset == "snATACseq", "snATAC-seq", all_donor_df$dataset))))
+#make dataset column look pretty
+all_donor_df$dataset <- recode(all_donor_df$dataset,
+                               "HLA_typing" = "HLA typing",
+                               "RNAseq" = "RNA-seq",
+                               "scRNAseq" = "scRNA-seq",
+                               "snATACseq" = "snATAC-seq")
 
 islet_df <- all_donor_df %>% filter(dataset_tissue %in% c("Islet",  "-"))
 
@@ -159,7 +170,7 @@ ui <- fluidPage(
                             bsTooltip(id = "Variable",
                                       title = "Select a grouping by which to separate donors"),
                             downloadButton("DownloadBar",
-                                           "Download Barplot"),
+                                           "Download Bar Plot"),
                             selectInput("RemoveNA", "Remove 'unknowns' from stacked bar?",
                                         choices=c("No", "Yes")),
                             bsTooltip(id = "RemoveNA",
@@ -202,7 +213,9 @@ ui <- fluidPage(
                           sidebarPanel(
                             checkboxGroupInput("checkbox", "Metrics to include:",
                                                choices=continuous_vars,
-                                               selected=continuous_vars)
+                                               selected=continuous_vars),
+                            downloadButton("DownloadHeatmap", 
+                                           "Download")
                           ),
                           mainPanel(
                             p(),
@@ -220,7 +233,9 @@ ui <- fluidPage(
                                       title = "Select a correlation method"),
                             checkboxGroupInput("checkbox3", "Metrics to include:",
                                                choices=continuous_vars,
-                                               selected=continuous_vars)),
+                                               selected=continuous_vars),
+                            downloadButton("DownloadCorrMat", 
+                                           "Download")),
                           mainPanel(
                             p(),
                             p("Select checkboxes and correlation type on the left to show the correlation between different metrics for PanKbase donors. The correlation coefficient (R for Pearson's correlation and Rho for Spearman's correlation) is denoted by the color and number inside the box, and the p-value is indicated by the asterisks. Significance levels are as follows: * p < 0.05, ** p < 0.01, *** p < 0.001. P-values are re-calculated for multiple comparisons based on the number of comparisons selected using the checkboxes.", style = "font-weight:400"),
@@ -271,7 +286,8 @@ ui <- fluidPage(
                             selectInput("Ellipses", "Add 95% CI per-group ellipses?",
                                         choices = c("No", "Yes")),
                             bsTooltip(id = "Ellipses",
-                                      title = "Add ellipses showing 95% confidence interval per group?")),
+                                      title = "Add ellipses showing 95% confidence interval per group?"),
+                            downloadButton("DownloadPCA", "Download")),
                           mainPanel(
                             p(),
                             p("Select metrics on the left to calculate and plot a principal component analysis (PCA) of the donor metadata. Each point in the plot represents one donor. For more information about each donor, explore the ", tags$a(href = "https://data.pankbase.org", "Data Library", .noWS = "outside"), ".", style = "font-weight:400"),
@@ -283,7 +299,8 @@ ui <- fluidPage(
                             selectInput("PC", "Principal Component",
                                         choices= setNames(1:9,paste0("PC", 1:9))),
                             bsTooltip(id = "PC",
-                                      title = "Choose which PC to view")),
+                                      title = "Choose which PC to view"),
+                            downloadButton("DownloadContribs", "Download")),
                           mainPanel(
                             p(),
                             p("Select a principal component (PC) to show the contribution of different variables to that PC (i.e. how much does that metric influence the PC?) based on the plot above.", style = "font-weight:400"),
@@ -303,8 +320,8 @@ ui <- fluidPage(
                           sidebarPanel(
                             selectInput("Tissue", "Tissue",
                                         choices = c("Islet"),
-                                        selected = "Islet")
-                            # downloadButton("DownloadDonorMat", "Download")
+                                        selected = "Islet"),
+                            downloadButton("DownloadDonorMat", "Download")
                           ),
                           mainPanel(
                             p(),
@@ -319,8 +336,8 @@ ui <- fluidPage(
                                         selected = "Islet"),
                             checkboxGroupInput("checkbox_upset", "Assays to include:",
                                                choices=unique(islet_df$dataset),
-                                               selected=c("Genotyping", "RNA-seq", "ATAC-seq", "scRNA-seq", "snATAC-seq"))
-                            # downloadButton("DownloadUpset", "Download")
+                                               selected=c("Genotyping", "RNA-seq", "ATAC-seq", "scRNA-seq", "snATAC-seq")),
+                            downloadButton("DownloadUpset", "Download")
                           ),
                           mainPanel(
                             p(),
@@ -347,6 +364,10 @@ ui <- fluidPage(
                             plotOutput("donor_stacked_barplot")))
                ),
                tabPanel("Venn Diagram of AAB status",
+                        sidebarLayout(
+                          sidebarPanel(
+                            downloadButton("DownloadVenn", "Download")
+                          ),
                         mainPanel(
                           p(),
                           p("Venn Diagram of auto-antibody (AAB) positivity for donors positive for at least one AAB. Currently displayed donors are from the ", 
@@ -356,7 +377,7 @@ ui <- fluidPage(
                           plotOutput("venndiag")))
                
              )
-             ),
+             )),
     tabPanel("Assay Descriptions",
              h3("Assays included in the Donor Summary Tool are defined as follows:"),
              h1(),
@@ -390,6 +411,8 @@ ui <- fluidPage(
 # Define server logic required to draw all plots
 server <- function(input, output, session) {
 
+  ##for bar plots tab
+  
   #create plot by itself first
   barPlot_fxn <- function() {
     #filter if we want
@@ -411,11 +434,11 @@ server <- function(input, output, session) {
       geom_bar(stat="identity", position = "dodge2") +
       geom_text(aes(label=metadata_summ[,"counts"]), position=position_dodge(width=0.9), vjust=-0.25, size = 5) +
       scale_fill_manual(values = collection_pal) +
-      xlab(input$Variable) + ylab("Number of Donors") + 
-      labs(fill = input$Variable) + 
+      labs(x = input$Variable,
+           y = "Number of Donors",
+           fill = input$Variable) + 
       coord_cartesian(clip = "off") +
-      theme(axis.text.x = element_text(angle = 45, hjust=1)) +
-      theme(plot.margin = margin(1.5,1,1.5,1, "cm"))
+      theme(axis.text.x = element_text(angle = 45, hjust=1), plot.margin = margin(1.5,1,1.5,1, "cm"))
   }
   
   # Fill in the spot we created for a plot
@@ -448,9 +471,8 @@ server <- function(input, output, session) {
     ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable], y=perc, x = input$DataFilter)) + 
       geom_bar(stat="identity", color = "white") +
       scale_fill_manual(values = collection_pal) +
-      ylab("Percent of Donors") + 
-      labs(fill = input$Variable) + 
-      # theme_classic() +
+      labs(y = "Percent of Donors",
+           fill = input$Variable) + 
       theme(plot.margin = margin(1.5,1,1.5,1, "cm"),
             axis.title.x = element_blank(),
             axis.text.x = element_blank(),
@@ -460,6 +482,9 @@ server <- function(input, output, session) {
   output$stackedBar <- renderPlot({
     stackedBar_fxn()
   })
+
+  
+  ##for ridgelines tab
   
   ridgelines_fxn <- function() {
     #set up colors for plot
@@ -476,53 +501,52 @@ server <- function(input, output, session) {
     }
     
     #remove values that are NA
-    metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$Variable2]) & metadata_filt[,input$Variable2] != "unknown" & metadata_filt[,input$Variable2] != "",]
+    metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$Variable2]) & !metadata_filt[,input$Variable2] %in% c("unknown", "NA", ""),]
+    metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$MetrictoPlot2]),]
     metadata_filt <- metadata_filt[order(metadata_filt[,input$Variable2]),]
     metadata_filt[,input$Variable2] <- metadata_filt[,input$Variable2] %>% fct_rev()
     
-    #need to filter for values where they only occur once so they don't get plotted - otherwise it plots them as empty lines
-    metadata_filt <- metadata_filt[metadata_filt[,input$Variable2] %in% unique(metadata_filt[,input$Variable2][duplicated(metadata_filt[,input$Variable2])]),]
+    #filter because must have at least 3 data points to plot a ridge
+    metadata_filt <- metadata_filt %>% filter(n() > 2, .by = input$Variable2)
     
-    #make a plot
-    ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot2], y = metadata_filt[,input$Variable2], fill = fct_rev(metadata_filt[,input$Variable2]))) + 
-      geom_density_ridges(scale = 0.9, 
-                          # alpha = 0.8,
-                          # rel_min_height = 0.01,
-                          quantile_lines = TRUE, quantiles = 2) +
-      scale_fill_manual(values = collection_pal) +
-      xlim(c(0, max(metadata_filt[,input$MetrictoPlot2]))) + #limit minimum of ridge to zero
-      xlab(input$MetrictoPlot2) +
-      ylab(input$Variable2) +
-      guides(fill=guide_legend(title=input$Variable2)) +
-      coord_cartesian(clip = "off") +
-      # theme_classic() +
-      theme(plot.margin = unit(c(1.5,1,1,1), "cm"))
+    
+    if (nrow(metadata_filt) > 1) {
+      #make a plot if there is enough data to make a plot
+      p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot2], y = metadata_filt[,input$Variable2], fill = fct_rev(metadata_filt[,input$Variable2]))) + 
+          geom_density_ridges(scale = 0.9, 
+                              # alpha = 0.8,
+                              # rel_min_height = 0.01,
+                              quantile_lines = TRUE, quantiles = 2) +
+          scale_fill_manual(values = collection_pal) +
+          xlim(c(0, max(metadata_filt[,input$MetrictoPlot2]))) + #limit minimum of ridge to zero
+          xlab(input$MetrictoPlot2) +
+          ylab(input$Variable2) +
+          guides(fill=guide_legend(title=input$Variable2)) +
+          coord_cartesian(clip = "off") +
+          theme(plot.margin = unit(c(1.5,1,1,1), "cm"))
+    }
+    
+    else {
+      #if no data, print error message
+      par(mar = c(0,0,0,0))
+      p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+      p <- p + text(x = 0.5, y = 0.5, paste("No data fit these criteria.\n",
+                                            "Please select other parameters.\n"), 
+                    cex = 1.6, col = "black")
+
+    }
+    print(p)
+    
   }
   
   output$ridgelines <- renderPlot({
     ridgelines_fxn()
   })
   
-  output$venndiag <- renderPlot({
-
-    #get lists of positive donors to intersect
-    AAB_GADA_donors <- metadata %>% filter(`AAB-GADA Positive` == TRUE) %>% .$ID
-    AAB_IA2_donors <- metadata %>% filter(`AAB-IA2 Positive` == TRUE) %>% .$ID
-    AAB_IAA_donors <- metadata %>% filter(`AAB-IAA Positive` == TRUE) %>% .$ID
-    AAB_ZNT8_donors <- metadata %>% filter(`AAB-ZNT8 Positive` == TRUE) %>% .$ID
-
-    venn_list <- list("GADA positive" = AAB_GADA_donors,
-                      "IA2 positive" = AAB_IA2_donors,
-                      "IAA positive" = AAB_IAA_donors,
-                      "ZNT8 positive" = AAB_ZNT8_donors)
-
-    ggvenn(venn_list,
-           fill_color = all_palette(length(venn_list))
-          ) +
-      coord_cartesian(clip = "off")
-  })
   
-  output$heatmap <- renderPlot({
+  ##for clustering heatmap tab
+  
+  heatmap_fxn <- function() {
     #set up colors for plot
     collections <- unique(metadata$Program) %>% sort()
     collection_pal <- all_palette(length(collections))
@@ -531,28 +555,37 @@ server <- function(input, output, session) {
     collections2 <- unique(metadata$`Description of diabetes status`) %>% sort()
     collection_pal2 <- all_palette(length(collections2))
     names(collection_pal2) <- collections2
-
-    set.seed(123)
+    
+    #create matrix to plot
     metadata_vars <- metadata[,c("Program", "Description of diabetes status", input$checkbox)]
-    metadata_vars <- metadata_vars %>% na.omit()
+    metadata_vars <- metadata_vars[complete.cases(metadata[,continuous_vars]),]
+    metadata_vars[,input$checkbox] <- lapply(metadata_vars[,input$checkbox], as.numeric)
     metadata_mat <- metadata_vars[,input$checkbox] %>% as.matrix() %>% scale()
     
     #set up color palette
     col_fun <- colorRamp2(c(-3, 0, 3), hcl_palette = "Viridis")
     
+    #draw heatmap
     row_ha <- rowAnnotation(Program = metadata_vars$Program, `Diabetes status` = metadata_vars$`Description of diabetes status`, col = list(Program = collection_pal, `Diabetes status` = collection_pal2))
     draw(Heatmap(metadata_mat, right_annotation = row_ha, name = "Scaled value", 
                  show_row_names = FALSE, row_title = "Donors", 
                  row_title_gp = gpar(fontsize = 16), row_title_side = "left",
                  col = col_fun), 
-         padding = unit(c(5, 5, 5, 5), "mm")) #, width = unit(4, "cm"), height = unit(6, "cm")
+         padding = unit(c(5, 5, 5, 5), "mm")) 
+  }
+  
+  output$heatmap <- renderPlot({
+    heatmap_fxn()
   },
   height = 600)
   
-  output$corr_plot <- renderPlot({
+  
+  ##for correlation matrix tab
+  corr_plot_fxn <- function() {
     #get values you want
     metadata_vars <- metadata[,c("Program", input$checkbox3)]
-
+    metadata_vars[,input$checkbox3] <- lapply(metadata_vars[,input$checkbox3], as.numeric)
+    
     if (input$corr_type == "pearson") {
       plot_title <- "Pearson Correlation Matrix"
       legend_title <- "Pearson R"
@@ -561,16 +594,17 @@ server <- function(input, output, session) {
       plot_title <- "Spearman Correlation Matrix"
       legend_title <- "Spearman Rho"
     }
-
+    
+    #get correlations
     corr_all <- rcorr(as.matrix(metadata_vars[,-1]),type=input$corr_type)
     corr <- corr_all$r
     p_mat <- corr_all$P
     n_tests <- (length(p_mat) - length(diag(p_mat)))/2
-
+    
     # Get p-value matrix
     p.df = as.data.frame(p_mat)
     p.df <-p.df*n_tests
-    # Function to get asteriks
+    # Function to get asterisks
     labs.function = function(x){
       case_when(x >= 0.05 ~ "",
                 x < 0.05 & x >= 0.01 ~ "*",
@@ -582,120 +616,47 @@ server <- function(input, output, session) {
     p.labs = p.df  %>%                      
       mutate_all(labs.function)
     
-    # Reshaping asteriks matrix to match ggcorrplot data output
+    # Reshaping asterisks matrix to match ggcorrplot data output
     p.labs$Var1 = as.factor(rownames(p.labs))
     p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
-
+    
     # Initial ggcorrplot
     cor.plot = ggcorrplot(corr, hc.order = FALSE, type = "lower",
                           lab = TRUE,
+                          lab_size = 6,
+                          tl.cex = 16,
                           title = plot_title) +
       scale_fill_gradient2(legend_title,
                            low = "#3A86FF", 
                            mid = "white", 
                            high = "#FD2244",
                            midpoint = 0,
-                           limits = c(-1, 1))
+                           limits = c(-1, 1)) +
+      theme(plot.title = element_text(size = 16))
     
-    # Subsetting asteriks matrix to only those rows within ggcorrplot data
+    # Subsetting asterisks matrix to only those rows within ggcorrplot data
     p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2),
                                       paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
                           "No", "Yes")
-
+    
     p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
-
-    # Add asteriks to ggcorrplot
+    
+    # Add asterisks to ggcorrplot
     cor.plot.labs = cor.plot +
       geom_text(aes(x = p.labs$Var1,
                     y = p.labs$Var2),
                 label = p.labs$lab,
                 nudge_y = 0.25,
-                size = 5) 
-    cor.plot.labs
-
-    
-  })
+                size = 8) 
+    print(cor.plot.labs)
+  }
   
-  output$pca_plot <- renderPlot({
-    #set up color palettes
-    collections <- unique(metadata[,input$Color]) %>% sort()
-    collection_pal <- all_palette(length(collections)) #maybe try #70A7FF for blue or #85B4FF
-    names(collection_pal) <- factor(collections)
-
-    df_pca <- metadata[complete.cases(metadata[ , input$checkbox2]),]
-    res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
-
-    #what do you want to color by
-    groups <- factor(df_pca[,input$Color])
-    unq_pal <- collection_pal[names(collection_pal) %in% unique(groups)]
-
-    #plot pca with color
-    if (input$Ellipses == "No") {
-      fviz_pca_ind(res.pca,
-                   col.ind = groups,
-                   palette = collection_pal,
-                   label = FALSE,
-                   legend.title = input$Color)  +
-      xlab("PC1") +
-      ylab("PC2") +
-      theme(axis.text = element_text(size=12),
-            axis.title = element_text(size=14),
-            plot.title = element_text(size=16))
-    }
-    else if (input$Ellipses == "Yes") {
-      
-      if (length(unique(df_pca[,input$Color])) < 2) {
-        nam_vec <- df_pca[,input$Color]
-        col_vec <- rep(unq_pal[[1]], nrow(df_pca)) #%>% as.factor()
-        names(col_vec) <- nam_vec
-        names(unq_pal) <- as.character(names(unq_pal))
-        unq_col <- unname(unq_pal)
-        fviz_pca_ind(res.pca,
-                     col.var = df_pca[,input$Color],
-                     col.ind = unq_pal,
-                     label = FALSE,
-                     addEllipses=TRUE,
-                     ellipse.level=0.95,
-                     legend.title = input$Color,
-                     legend.position = "right",
-                     add.legend = TRUE) +
-          xlab("PC1") +
-          ylab("PC2") +
-          theme(axis.text = element_text(size=12),
-                axis.title = element_text(size=14),
-                plot.title = element_text(size=16))
-      }
-      
-      else {
-        fviz_pca_ind(res.pca,
-                     col.ind = groups,
-                     palette = collection_pal,
-                     label = FALSE,
-                     addEllipses=TRUE,
-                     ellipse.level=0.95,
-                     legend.title = input$Color) +
-          xlab("PC1") +
-          ylab("PC2") +
-          theme(axis.text = element_text(size=12),
-                axis.title = element_text(size=14),
-                plot.title = element_text(size=16))
-      }
-      
-      
-    }
-
-  })
+  output$corr_plot <- renderPlot({
+    corr_plot_fxn()
+  },
+  height = 600)
   
-  output$pca_contribs <- renderPlot({
-    df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
-    res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
-    #plot
-    fviz_contrib(res.pca, choice = "var", axes = as.numeric(input$PC), top = 10, fill = "#219197", color = "#219197", ggtheme = theme_classic()) +
-      ggtitle(paste0("Contributions of variables to PC", input$PC)) +
-      theme(axis.text = element_text(size=12),
-            axis.title = element_text(size=14),
-            plot.title = element_text(size=16))
-  })
+  ##for scatter plot tab
   
   scatterPlot_fxn <- function() {
     #set up colors for plot
@@ -710,17 +671,14 @@ server <- function(input, output, session) {
                                 metadata[,input$Var2] != "",]
     
     #calculate correlation
-    c <- cor.test(metadata_filt[,input$Var1], metadata_filt[,input$Var2], method = input$corr_type2) #changed from rcorr
+    c <- cor.test(metadata_filt[,input$Var1], metadata_filt[,input$Var2], method = input$corr_type2)
     
     #generate a label for the correlation value shown on the graph
     corr_lab <- ifelse(input$corr_type2 == "pearson", paste0("R = ", signif(c$estimate, 4)), paste0("Rho = ", signif(c$estimate, 4)))
     
-    #filter values for NA in NEITHER column to get good dimensions for plot - probably don't need these anymore
+    #filter values for NA in NEITHER column to get good location to put stats on plot
     max_filt_val1 <- subset(metadata[,input$Var1], !is.na(metadata[,input$Var2]) & !is.na(metadata[,input$Var1])) %>% max()
     max_filt_val2 <- subset(metadata[,input$Var2], !is.na(metadata[,input$Var1]) & !is.na(metadata[,input$Var2])) %>% max()
-    
-    min_filt_val1 <- subset(metadata[,input$Var1], !is.na(metadata[,input$Var2]) & !is.na(metadata[,input$Var1])) %>% min()
-    min_filt_val2 <- subset(metadata[,input$Var2], !is.na(metadata[,input$Var1]) & !is.na(metadata[,input$Var2])) %>% min()
     
     #plot the data
     p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$Var1], y = metadata_filt[,input$Var2], color = metadata_filt[,input$Color2])) + 
@@ -747,132 +705,204 @@ server <- function(input, output, session) {
     
     print(p)
     
-
+    
   }
   
   output$scatterPlot <- renderPlot ({
     scatterPlot_fxn()
   })
   
-  donor_matrix_fxn <- function() {
-    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue,  "-"))
-
-    lt <- list()
-    for (i in unique(tissue_df$dataset)) {
-      dons <- tissue_df$ID[tissue_df$dataset == i]
-      lt[[i]] <- dons
-    }
+  
+  ##for PCA tab
+  
+  pca_fxn <- function() {
+    #set up color palettes
+    collections <- unique(metadata[,input$Color]) %>% sort()
+    collection_pal <- all_palette(length(collections))
+    names(collection_pal) <- factor(collections)
     
+    #do PCA
+    df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
+    df_pca[,input$checkbox2] <- lapply(df_pca[,input$checkbox2], as.numeric)
+    res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
+    
+    #what do you want to color by
+    groups <- factor(df_pca[,input$Color])
+    unq_pal <- collection_pal[names(collection_pal) %in% unique(groups)]
+    
+    #plot pca with color
+    if (input$Ellipses == "No") {
+      p <- fviz_pca_ind(res.pca,
+                        col.ind = groups,
+                        palette = collection_pal,
+                        label = FALSE,
+                        legend.title = input$Color)  +
+        labs(x = "PC1",
+             y = "PC2") +
+        theme(axis.text = element_text(size=12),
+              axis.title = element_text(size=14),
+              plot.title = element_text(size=16))
+    }
+    else if (input$Ellipses == "Yes") {
+      
+      if (length(unique(df_pca[,input$Color])) < 2) {
+        nam_vec <- df_pca[,input$Color]
+        col_vec <- rep(unq_pal[[1]], nrow(df_pca)) #%>% as.factor()
+        names(col_vec) <- nam_vec
+        names(unq_pal) <- as.character(names(unq_pal))
+        unq_col <- unname(unq_pal)
+        p <- fviz_pca_ind(res.pca,
+                          col.var = df_pca[,input$Color],
+                          col.ind = unq_pal,
+                          label = FALSE,
+                          addEllipses=TRUE,
+                          ellipse.level=0.95,
+                          legend.title = input$Color,
+                          legend.position = "right",
+                          add.legend = TRUE) +
+          labs(x = "PC1",
+               y = "PC2") +
+          theme(axis.text = element_text(size=12),
+                axis.title = element_text(size=14),
+                plot.title = element_text(size=16))
+      }
+      
+      else {
+        p <- fviz_pca_ind(res.pca,
+                          col.ind = groups,
+                          palette = collection_pal,
+                          label = FALSE,
+                          addEllipses=TRUE,
+                          ellipse.level=0.95,
+                          legend.title = input$Color) +
+          labs(x = "PC1", 
+               y = "PC2") +
+          theme(axis.text = element_text(size=12),
+                axis.title = element_text(size=14),
+                plot.title = element_text(size=16))
+      }
+      
+      
+    }
+    print(p)
+  }
+  
+  output$pca_plot <- renderPlot({
+    pca_fxn()
+    
+  })
+  
+  pca_contribs_fxn <- function() {
+    #do PCA
+    df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
+    df_pca[,input$checkbox2] <- lapply(df_pca[,input$checkbox2], as.numeric)
+    res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
+    
+    #plot variable contributions
+    p <- fviz_contrib(res.pca, choice = "var", axes = as.numeric(input$PC), top = 10, fill = "#219197", color = "#219197", ggtheme = theme_classic()) +
+      ggtitle(paste0("Contributions of variables to PC", input$PC)) +
+      theme(axis.text = element_text(size=12),
+            axis.title = element_text(size=14),
+            plot.title = element_text(size=16))
+    
+    print(p)
+  }
+  
+  output$pca_contribs <- renderPlot({
+    pca_contribs_fxn()
+  })
+  
+  
+  ##for donor matrix tab
+  
+  donor_matrix_fxn <- function() {
+    #filter df for tissue of interest
+    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue,  "-"))
+    
+    #get number of donors for each assay, then sort descending
     df_wide <- tissue_df %>% pivot_wider(names_from = dataset, id_cols = ID, values_from = dataset_tissue)
     cols <- colnames(df_wide)[-1]
     df_wide[cols] <- +(!is.na(df_wide[cols]))
     df_wide <- df_wide %>% merge(metadata, on = "ID")
     df_wide$sum <- rowSums(df_wide[cols])
     df_wide <- df_wide[order(df_wide$`Description of diabetes status`, -df_wide$sum),]
-
-    to_plot <- as.matrix(df_wide[,cols]) %>% t()
-
-    col_fun <- colorRamp2(c(0, 1), c("#fafafa", "#219197"))
     
+    #get out columns you want to plot in matrix
+    to_plot <- as.matrix(df_wide[,cols]) %>% t()
+    
+    #set up colors
+    col_fun <- colorRamp2(c(0, 1), c("#fafafa", "#219197"))
     collections <- unique(metadata[,"Description of diabetes status"]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
-    
     color_this_plot <- collection_pal[c("No diabetes", "Type 1 diabetes", "Type 2 diabetes")]
-
+    
+    #get top heatmap annotation
     ha <- HeatmapAnnotation(`Diabetes status` = df_wide$`Description of diabetes status`,
-                             col = list(`Diabetes status` = color_this_plot),
-                             show_annotation_name = FALSE,
-                             show_legend = FALSE)
+                            col = list(`Diabetes status` = color_this_plot),
+                            show_annotation_name = FALSE,
+                            show_legend = FALSE)
+    #add barplot of sums on the right
     ra <- rowAnnotation(`Total # Donors` = anno_barplot(rowSums(to_plot),
-                                                  gp = gpar(fill = "#94c95e", lty="blank"),
-                                                  border = FALSE,
-                                                  axis_param = list(labels_rot = 0,
-                                                                    side = "bottom"),
-                                                  width = unit(4, "cm")),
+                                                        gp = gpar(fill = "#94c95e", lty="blank"),
+                                                        border = FALSE,
+                                                        axis_param = list(labels_rot = 0,
+                                                                          side = "bottom"),
+                                                        width = unit(4, "cm")),
                         `# Donors2` = anno_text(rowSums(to_plot)))
     
+    #draw matrix
     ht = Heatmap(to_plot, name = "Donor Assay Availability", top_annotation = ha, right_annotation = ra,
-            cluster_rows = FALSE, cluster_columns = FALSE, 
-            row_order = c("scRNA-seq", "RNA-seq", "snATAC-seq", "ATAC-seq", "Genotyping", "HLA typing", "Function", "Morphology", "CyTof", "WGBS", "Imaging"),
-            row_names_side = "left",
-            col = col_fun, 
-            rect_gp = gpar(col = "white", lwd = 1),
-            column_split = df_wide$`Description of diabetes status`,
-            show_heatmap_legend = FALSE,
-            show_column_names = FALSE,
-            row_names_gp = grid::gpar(fontsize = 14))
+                 cluster_rows = FALSE, cluster_columns = FALSE, 
+                 row_order = c("scRNA-seq", "RNA-seq", "snATAC-seq", "ATAC-seq", "Genotyping", "HLA typing", "Function", "Morphology", "CyTof", "WGBS", "Imaging"),
+                 row_names_side = "left",
+                 col = col_fun, 
+                 rect_gp = gpar(col = "white", lwd = 1),
+                 column_split = df_wide$`Description of diabetes status`,
+                 show_heatmap_legend = FALSE,
+                 show_column_names = FALSE,
+                 row_names_gp = grid::gpar(fontsize = 14))
     draw(ht, column_title = "Donors", column_title_gp = gpar(fontsize = 16), column_title_side = "bottom",
          padding = unit(c(1, 1, 1, 1), "cm"))
-
+    
   }
   
   output$donor_matrix <- renderPlot ({
     donor_matrix_fxn()
   })
   
-  donor_stacked_bar_fxn <- function() {
-    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue2,  "-"))
-    tissue_df <- tissue_df %>% merge(metadata, on = "ID")
-    
-    lt <- list()
-    for (i in unique(tissue_df$dataset)) {
-      dons <- tissue_df$ID[tissue_df$dataset == i]
-      lt[[i]] <- dons
-    }
-    
-    calc_df <- tissue_df %>% merge(metadata, on = "ID") %>% summarise(n_counts = n(), .by = c(input$Grouping2, "dataset"))
-
-    #to get order of stacked bar
-    summ_df <- calc_df %>% summarise(total_samps = sum(n_counts), .by = "dataset")
-    summ_df <- summ_df[order(summ_df$total_samps, decreasing = TRUE),]
-    data_factors <- summ_df$dataset
-      
-    collections <- unique(metadata[,input$Grouping2]) %>% sort()
-    collection_pal <- all_palette(length(collections))
-    names(collection_pal) <- collections
-
-    calc_df$dataset <- factor(calc_df$dataset, levels = data_factors)
-    ggplot(calc_df, aes(y = n_counts, x = dataset)) + 
-      geom_bar(position = "stack", stat="identity", aes(fill = calc_df[,input$Grouping2]), color = "white") + 
-      geom_text(data = summ_df, aes(x = dataset, y = total_samps+6, label = total_samps)) +
-      scale_fill_manual(values = collection_pal) +
-      ylab("Number of Donors") + xlab("Assay") +
-      ggtitle(input$Tissue2) +
-      guides(fill=guide_legend(title=input$Grouping2)) +
-      theme(axis.text.x = element_text(angle = 45, hjust=1), plot.title = element_text(hjust = 0.5))
-
-  }
   
-  output$donor_stacked_barplot <- renderPlot ({
-    donor_stacked_bar_fxn()
-  })
+  ##for upset plot tab
   
   upset_fxn <- function() {
+    #filter to tissue of interest
     tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue3,  "-"))
     tissue_df <- tissue_df %>% filter(dataset %in% input$checkbox_upset)
     
+    #get list of donors in each dataset
     lt <- list()
     for (i in unique(tissue_df$dataset)) {
       dons <- tissue_df$ID[tissue_df$dataset == i]
       lt[[i]] <- dons
     }
     
+    #make combination matrix
     m1 <- make_comb_mat(lt, mode = "intersect")
     ss = set_size(m1)
     cs = comb_size(m1)
     
+    #plot upset plot
     ht = UpSet(m1,
                right_annotation = NULL,
                comb_order = order(comb_degree(m1), -cs),
                top_annotation = HeatmapAnnotation(
                  "Number of Donors" = anno_barplot(cs,
-                                             ylim = c(0, max(cs)*1.1),
-                                             border = FALSE,
-                                             height = unit(4, "cm"),
-                                             gp = gpar(fill = "#219197", lty="blank"),
-                                             axis_param = list(gp = gpar(fontsize=16))),
-                                          annotation_name_gp = gpar(fontsize=16),
+                                                   ylim = c(0, max(cs)*1.1),
+                                                   border = FALSE,
+                                                   height = unit(4, "cm"),
+                                                   gp = gpar(fill = "#219197", lty="blank"),
+                                                   axis_param = list(gp = gpar(fontsize=16))),
+                 annotation_name_gp = gpar(fontsize=16),
                  
                  annotation_name_side = "left"
                ),
@@ -892,76 +922,142 @@ server <- function(input, output, session) {
     upset_fxn()
   })
   
-  output$scRNAavail <- function() {
-    
-  }
   
-  stacked_assays_fxn <- function() {
-    collections <- unique(metadata$Program) %>% sort()
+  ##for stacked bar plot tab
+  
+  donor_stacked_bar_fxn <- function() {
+    #filter df for tissue of interest
+    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue2,  "-"))
+    tissue_df <- tissue_df %>% merge(metadata, on = "ID")
+    
+    #count number of donors in each group
+    calc_df <- tissue_df %>% merge(metadata, on = "ID") %>% summarise(n_counts = n(), .by = c(input$Grouping2, "dataset"))
+    
+    #to get order of stacked bar
+    summ_df <- calc_df %>% summarise(total_samps = sum(n_counts), .by = "dataset")
+    summ_df <- summ_df[order(summ_df$total_samps, decreasing = TRUE),]
+    data_factors <- summ_df$dataset
+    
+    #set up color palette
+    collections <- unique(metadata[,input$Grouping2]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     
-    all_donor_program <- all_donor_df %>% merge(metadata[,c("ID", "Program")], on = "ID") %>% filter(dataset_tissue %in% c(input$Tissue4, "-"))
+    #re-factor to get correct order
+    calc_df$dataset <- factor(calc_df$dataset, levels = data_factors)
     
-    #subset data to be the data we want
-    program_summ <- all_donor_program %>% summarise(counts = n(), .by = c("dataset", "Program"))
-
-    dataset_summ <- all_donor_program %>% summarise(total_dataset_counts = n(), .by = "dataset")
-    order_df <- dataset_summ[order(dataset_summ[,"total_dataset_counts"]),]
-    order <- order_df$dataset
-    
-    ggplot(program_summ, aes(y = counts, x = factor(dataset, levels = rev(order)))) + 
-      geom_bar(position = "stack", stat="identity", aes(fill = Program)) + 
-      geom_text(data = dataset_summ, aes(x = dataset, y = total_dataset_counts+6, label = total_dataset_counts)) +
+    #plot
+    ggplot(calc_df, aes(y = n_counts, x = dataset)) + 
+      geom_bar(position = "stack", stat="identity", aes(fill = calc_df[,input$Grouping2]), color = "white") + 
+      geom_text(data = summ_df, aes(x = dataset, y = total_samps+6, label = total_samps)) +
       scale_fill_manual(values = collection_pal) +
       ylab("Number of Donors") + xlab("Assay") +
-      guides(fill=guide_legend(title="Program")) +
-      theme(axis.text.x = element_text(angle = 45, hjust=1),
-            plot.margin = margin(1.5,1,1.5,1, "cm"))
+      ggtitle(input$Tissue2) +
+      guides(fill=guide_legend(title=input$Grouping2)) +
+      theme(axis.text.x = element_text(angle = 45, hjust=1), plot.title = element_text(hjust = 0.5))
     
   }
   
-  output$stacked_assays <- renderPlot ({
-    stacked_assays_fxn()
+  output$donor_stacked_barplot <- renderPlot ({
+    donor_stacked_bar_fxn()
   })
+  
+  
+  
+  ##for venn diagram tab
+  
+  venn_diag_fxn <- function() {
+    #get lists of positive donors to intersect
+    AAB_GADA_donors <- metadata %>% filter(`AAB-GADA Positive` == TRUE) %>% .$ID
+    AAB_IA2_donors <- metadata %>% filter(`AAB-IA2 Positive` == TRUE) %>% .$ID
+    AAB_IAA_donors <- metadata %>% filter(`AAB-IAA Positive` == TRUE) %>% .$ID
+    AAB_ZNT8_donors <- metadata %>% filter(`AAB-ZNT8 Positive` == TRUE) %>% .$ID
+    
+    venn_list <- list("GADA positive" = AAB_GADA_donors,
+                      "IA2 positive" = AAB_IA2_donors,
+                      "IAA positive" = AAB_IAA_donors,
+                      "ZNT8 positive" = AAB_ZNT8_donors)
+    
+    p <- ggvenn(venn_list,
+           fill_color = all_palette(length(venn_list))) +
+      coord_cartesian(clip = "off")
+    print(p)
+  }
+  
+  output$venndiag <- renderPlot({
+    venn_diag_fxn()
+  })
+  
+
+
 
   #make plot downloaders
   output$DownloadBar <- downloadHandler(
     filename = function() { paste0("barplot_", Sys.time(), ".png") },
     content = function(file) {
-      # device <- function(..., width, height) grDevices::png(..., width = 8, height = 7, res = 300, units = "in")
-      ggsave(file, plot = barPlot_fxn(), width = shinybrowser::get_width()*4, height = shinybrowser::get_height()*4, units="px") #plot=last_plot()
+      ggsave(file, plot = barPlot_fxn(), width = shinybrowser::get_width()*4, height = shinybrowser::get_height()*4, units="px", bg = "white")
     }
   )
   
   output$DownloadStacked <- downloadHandler(
     filename = function() {paste0("stacked_barplot_", Sys.time(), ".png")},
     content = function(file) {
-      ggsave(file, plot = stackedBar_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px") #plot=last_plot()
-      # ggsave(file, plot = stackedBar_fxn(), width = 16, height = 12, units = "in") #plot=last_plot()
-      
+      ggsave(file, plot = stackedBar_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px", bg = "white")
     }
   )
   
   output$DownloadRidges <- downloadHandler(
     filename = function() {paste0("ridgeline_plot_", Sys.time(), ".png")},
     content = function(file) {
-      ggsave(file, plot = ridgelines_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px")
-      
+      ggsave(file, plot = ridgelines_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px", bg = "white")
+    }
+  )
+  
+  output$DownloadHeatmap <- downloadHandler(
+    filename = function() {paste0("cluster_heatmap_", Sys.time(), ".png")},
+    content = function(file) {
+      png(file, width = 12, height = 8, units = "in", res = 300) 
+      heatmap_fxn()
+      dev.off()
+    }
+  )
+  
+  output$DownloadCorrMat <- downloadHandler(
+    filename = function() {paste0("correlation_matrix_", Sys.time(), ".png")},
+    content = function(file) {
+      ggsave(file, plot = corr_plot_fxn(), width = shinybrowser::get_width()*2, height = shinybrowser::get_height()*2, units = "px", bg = "white")
     }
   )
   
   output$DownloadScatter <- downloadHandler(
     filename = function() {paste0("scatter_plot_", Sys.time(), ".png")},
     content = function(file) {
-      ggsave(file, plot = scatterPlot_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px")
+      ggsave(file, plot = scatterPlot_fxn(), width = shinybrowser::get_width()*3, height = shinybrowser::get_height()*4, units = "px", bg = "white")
+    }
+  )
+  
+  output$DownloadPCA <- downloadHandler(
+    filename = function() {paste0("PCA_", Sys.time(), ".png")},
+    content = function(file) {
+      png(file, width = 10, height = 8, units = "in", res = 300)
+      pca_fxn()
+      dev.off()
+    }
+  )
+  
+  output$DownloadContribs <- downloadHandler(
+    filename = function() {paste0("PCA_contributions_", Sys.time(), ".png")},
+    content = function(file) {
+      png(file, width = 12, height = 8, units = "in", res = 300) 
+      pca_contribs_fxn()
+      dev.off()
     }
   )
   
   output$DownloadDonorMat <- downloadHandler(
     filename = function() {paste0("donor_assay_matrix_", Sys.time(), ".png")},
     content = function(file) {
-      png(file, width = 12, height = 4, units = "in", res = 300)
+      png(file, width = 12, height = 4, units = "in", res = 300) 
       donor_matrix_fxn()
       dev.off()
     }
@@ -979,7 +1075,14 @@ server <- function(input, output, session) {
   output$DownloadDonorStacked <- downloadHandler(
     filename = function() {paste0("donor_stacked_barplot_", Sys.time(), ".png")},
     content = function(file) {
-      ggsave(file, plot = donor_stacked_bar_fxn(), width = 12, height = 8, units = "in")
+      ggsave(file, plot = donor_stacked_bar_fxn(), width = 12, height = 8, units = "in", bg = "white")
+    }
+  )
+  
+  output$DownloadVenn <- downloadHandler(
+    filename = function() {paste0("venn_diagram_", Sys.time(), ".png")},
+    content = function(file) {
+      ggsave(file, plot = venn_diag_fxn(), width = 12, height = 8, units = "in", bg = "white")
     }
   )
   
