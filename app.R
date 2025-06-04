@@ -23,6 +23,9 @@ library(shinyBS)
 library(ggcorrplot)
 library(reshape2)
 library(viridis)
+library(cowplot)
+library(grid)
+library(ggplotify)
 
 set.seed(123)
 
@@ -157,13 +160,13 @@ ui <- fluidPage(
                tabPanel("Bar Plots",
                         sidebarLayout(
                           sidebarPanel(
-                            selectInput("DataFilter", "Program Filter:",
+                            selectInput("DataFilter_bar", "Program Filter:",
                                         choices = c("All", unique(metadata$Program))),
-                            bsTooltip(id = "DataFilter",
+                            bsTooltip(id = "DataFilter_bar",
                                       title = "Select a program to subset the metadata"),
-                            selectInput("Variable", "Grouping:", 
+                            selectInput("Variable_bar", "Grouping:", 
                                         choices=colnames(metadata_mini)),
-                            bsTooltip(id = "Variable",
+                            bsTooltip(id = "Variable_bar",
                                       title = "Select a grouping by which to separate donors"),
                             downloadButton("DownloadBar",
                                            "Download Bar Plot"),
@@ -184,17 +187,17 @@ ui <- fluidPage(
                tabPanel("Ridgeline Plots",
                         sidebarLayout(
                           sidebarPanel(
-                            selectInput("DataFilter2", "Program Filter:",
+                            selectInput("DataFilter_ridge", "Program Filter:",
                                         choices = c("All", unique(metadata$Program))),
-                            bsTooltip(id = "DataFilter2",
+                            bsTooltip(id = "DataFilter_ridge",
                                       title = "Select a program to subset the metadata"),
-                            selectInput("Variable2", "Grouping:",
+                            selectInput("Variable_ridge", "Grouping:",
                                         choices=colnames(metadata_mini)),
-                            bsTooltip(id = "Variable2",
+                            bsTooltip(id = "Variable_ridge",
                                       title = "Select a grouping by which to separate donors"),
-                            selectInput("MetrictoPlot2", "Metric:",
+                            selectInput("MetrictoPlot_ridge", "Metric:",
                                         choices=continuous_vars),
-                            bsTooltip(id = "MetrictoPlot2",
+                            bsTooltip(id = "MetrictoPlot_ridge",
                                       title = "Select a metric to plot the distribution of"),
                             downloadButton("DownloadRidges",
                                            "Download")
@@ -207,7 +210,7 @@ ui <- fluidPage(
                tabPanel("Clustering Heatmap",
                         sidebarLayout(
                           sidebarPanel(
-                            checkboxGroupInput("checkbox", "Metrics to include:",
+                            checkboxGroupInput("checkbox_heatmap", "Metrics to include:",
                                                choices=continuous_vars,
                                                selected=continuous_vars),
                             downloadButton("DownloadHeatmap", 
@@ -223,11 +226,11 @@ ui <- fluidPage(
                tabPanel("Correlation Matrix",
                         sidebarLayout(
                           sidebarPanel( 
-                            selectInput("corr_type", "Correlation method:",
+                            selectInput("corr_type_mat", "Correlation method:",
                                         choices=setNames(c("pearson", "spearman"), c("Pearson", "Spearman"))),
-                            bsTooltip(id = "corr_type",
+                            bsTooltip(id = "corr_type_mat",
                                       title = "Select a correlation method"),
-                            checkboxGroupInput("checkbox3", "Metrics to include:",
+                            checkboxGroupInput("checkbox_corr", "Metrics to include:",
                                                choices=continuous_vars,
                                                selected=continuous_vars),
                             downloadButton("DownloadCorrMat", 
@@ -240,21 +243,21 @@ ui <- fluidPage(
                tabPanel("Scatter Plot",
                         sidebarLayout(
                           sidebarPanel(
-                            selectInput("Var1", "x-axis metric",
+                            selectInput("Var_x", "x-axis metric",
                                         choices=continuous_vars),
-                            bsTooltip(id = "Var1",
+                            bsTooltip(id = "Var_x",
                                       title = "Select a metric to plot on the x-axis"),
-                            selectInput("Var2", "y-axis metric",
+                            selectInput("Var_y", "y-axis metric",
                                         choices=continuous_vars),
-                            bsTooltip(id = "Var2",
+                            bsTooltip(id = "Var_y",
                                       title = "Select a metric to plot on the y-axis"),
-                            selectInput("Color2", "Color points by:",
+                            selectInput("Color_scatter", "Color points by:",
                                         choices=categorical_vars),
-                            bsTooltip(id = "Color2",
+                            bsTooltip(id = "Color_scatter",
                                       title = "Select a metric to color points by"),
-                            selectInput("corr_type2", "Correlation method:",
+                            selectInput("corr_type_scatter", "Correlation method:",
                                         choices=setNames(c("pearson", "spearman"), c("Pearson", "Spearman"))),
-                            bsTooltip(id = "corr_type2",
+                            bsTooltip(id = "corr_type_scatter",
                                       title = "Select a correlation method"),
                             selectInput("plot_lm", "Plot line of best fit with 95% CI?",
                                         choices=c("Yes", "No")),
@@ -271,12 +274,12 @@ ui <- fluidPage(
                tabPanel("PCA",
                         sidebarLayout(
                           sidebarPanel(
-                            selectInput("Color", "Color by:",
+                            selectInput("Color_PCA", "Color by:",
                                         choices=categorical_vars,
                                         selected = "Description of diabetes status"),
-                            bsTooltip(id = "Color",
+                            bsTooltip(id = "Color_PCA",
                                       title = "Select a metric to color points by"),
-                            checkboxGroupInput("checkbox2", "Metrics to include:",
+                            checkboxGroupInput("checkbox_pca", "Metrics to include:",
                                                choices=continuous_vars,
                                                selected=continuous_vars),
                             selectInput("Ellipses", "Add 95% CI per-group ellipses?",
@@ -314,7 +317,7 @@ ui <- fluidPage(
                tabPanel("Matrix",
                         sidebarLayout(
                           sidebarPanel(
-                            selectInput("Tissue", "Tissue",
+                            selectInput("Tissue_mat", "Tissue",
                                         choices = c("Islet"),
                                         selected = "Islet"),
                             downloadButton("DownloadDonorMat", "Download")
@@ -327,7 +330,7 @@ ui <- fluidPage(
                tabPanel("UpSet Plot",
                         sidebarLayout(
                           sidebarPanel(
-                            selectInput("Tissue3", "Tissue",
+                            selectInput("Tissue_upset", "Tissue",
                                         choices = c("Islet"),
                                         selected = "Islet"),
                             checkboxGroupInput("checkbox_upset", "Assays to include:",
@@ -345,10 +348,10 @@ ui <- fluidPage(
                tabPanel("Stacked Bar Plot",
                         sidebarLayout(
                           sidebarPanel(
-                            selectInput("Tissue2", "Tissue",
+                            selectInput("Tissue_stacked", "Tissue",
                                         choices = c("Islet"), #unique(all_donor_df$dataset_tissue)
                                         selected = "Islet"),
-                            selectInput("Grouping2", "Grouping",
+                            selectInput("Grouping_stacked", "Grouping",
                                         choices = categorical_vars,
                                         selected = "Program"
                             ),
@@ -412,29 +415,30 @@ server <- function(input, output, session) {
   #create plot by itself first
   barPlot_fxn <- function() {
     #filter if we want
-    if (input$DataFilter != "All") {
-      metadata_mini <- metadata_mini[metadata_mini[,"Program"] == input$DataFilter,]
+    if (input$DataFilter_bar != "All") {
+      metadata_mini <- metadata_mini[metadata_mini[,"Program"] == input$DataFilter_bar,]
     }
     
-    #subset data to be the data we want
-    metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable)
+    #get number of counts by grouping and sort
+    metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable_bar)
     metadata_summ <- metadata_summ[order(metadata_summ[,1]),]
     
     #set up color palettes
-    collections <- unique(metadata[,input$Variable]) %>% sort()
+    collections <- unique(metadata[,input$Variable_bar]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
 
     #make a plot
-    ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable], y=counts, x = metadata_summ[,input$Variable])) + 
-      geom_bar(stat="identity", position = "dodge2") +
-      geom_text(aes(label=metadata_summ[,"counts"]), position=position_dodge(width=0.9), vjust=-0.25, size = 5) +
-      scale_fill_manual(values = collection_pal) +
-      labs(x = input$Variable,
-           y = "Number of Donors",
-           fill = input$Variable) + 
-      coord_cartesian(clip = "off") +
-      theme(axis.text.x = element_text(angle = 45, hjust=1), plot.margin = margin(1.5,1,1.5,1, "cm"))
+    p <- ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable_bar], y=counts, x = metadata_summ[,input$Variable_bar])) + 
+          geom_bar(stat="identity", position = "dodge2") +
+          geom_text(aes(label=metadata_summ[,"counts"]), position=position_dodge(width=0.9), vjust=-0.25, size = 5) +
+          scale_fill_manual(values = collection_pal) +
+          labs(x = input$Variable_bar,
+               y = "Number of Donors",
+               fill = input$Variable_bar) + 
+          coord_cartesian(clip = "off") +
+          theme(axis.text.x = element_text(angle = 45, hjust=1), plot.margin = margin(1.5,1,1.5,1, "cm"))
+    print(p)
   }
   
   # Fill in the spot we created for a plot
@@ -444,17 +448,17 @@ server <- function(input, output, session) {
   
   stackedBar_fxn <- function() {
     #set up color palettes
-    collections <- unique(metadata[,input$Variable]) %>% sort()
+    collections <- unique(metadata[,input$Variable_bar]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
 
     #filter if we want
-    if (input$DataFilter != "All") {
-      metadata_mini <- metadata_mini[metadata_mini[,"Program"] == input$DataFilter,]
+    if (input$DataFilter_bar != "All") {
+      metadata_mini <- metadata_mini[metadata_mini[,"Program"] == input$DataFilter_bar,]
     }
     
     #subset data to be the data we want
-    metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable)
+    metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable_bar)
     metadata_summ$perc <- (metadata_summ$counts/sum(metadata_summ$counts))*100
     metadata_summ <- metadata_summ[order(metadata_summ[,1]),]
     
@@ -465,11 +469,11 @@ server <- function(input, output, session) {
     
     if (nrow(metadata_summ) > 0) {
       #make a plot if there is data to plot
-      p <- ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable], y=perc, x = input$DataFilter)) + 
+      p <- ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable_bar], y=perc, x = input$DataFilter_bar)) + 
             geom_bar(stat="identity", color = "white") +
             scale_fill_manual(values = collection_pal) +
             labs(y = "Percent of Donors",
-                 fill = input$Variable) + 
+                 fill = input$Variable_bar) + 
             theme(plot.margin = margin(1.5,1,1.5,1, "cm"),
                   axis.title.x = element_blank(),
                   axis.text.x = element_blank(),
@@ -481,7 +485,7 @@ server <- function(input, output, session) {
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
       p <- p + text(x = 0.5, y = 0.5, paste("No data fit these criteria.\n",
-                                            "Please select other parameters.\n"), 
+                                            "Please select different parameters.\n"), 
                     cex = 1.6, col = "black")
     }
     print(p)
@@ -497,42 +501,40 @@ server <- function(input, output, session) {
   
   ridgelines_fxn <- function() {
     #set up colors for plot
-    collections <- unique(metadata[,input$Variable2]) %>% sort()
+    collections <- unique(metadata[,input$Variable_ridge]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     
     #filter if we want
-    if (input$DataFilter2 != "All") {
-      metadata_filt <- metadata[metadata[,"Program"] == input$DataFilter2,]
+    if (input$DataFilter_ridge != "All") {
+      metadata_filt <- metadata[metadata[,"Program"] == input$DataFilter_ridge,]
     }
     else {
       metadata_filt <- metadata
     }
     
     #remove values that are NA
-    metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$Variable2]) & !metadata_filt[,input$Variable2] %in% c("unknown", "NA", ""),]
-    metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$MetrictoPlot2]),]
-    metadata_filt <- metadata_filt[order(metadata_filt[,input$Variable2]),]
-    metadata_filt[,input$Variable2] <- metadata_filt[,input$Variable2] %>% fct_rev()
+    metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$Variable_ridge]) & !metadata_filt[,input$Variable_ridge] %in% c("unknown", "NA", ""),]
+    metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$MetrictoPlot_ridge]),]
+    metadata_filt <- metadata_filt[order(metadata_filt[,input$Variable_ridge]),]
+    metadata_filt[,input$Variable_ridge] <- metadata_filt[,input$Variable_ridge] %>% fct_rev()
     
     #filter because must have at least 3 data points to plot a ridge
-    metadata_filt <- metadata_filt %>% filter(n() > 2, .by = input$Variable2)
+    metadata_filt <- metadata_filt %>% filter(n() > 2, .by = input$Variable_ridge)
     
     
     if (nrow(metadata_filt) > 1) {
       #make a plot if there is enough data to make a plot
-      p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot2], y = metadata_filt[,input$Variable2], fill = fct_rev(metadata_filt[,input$Variable2]))) + 
-          geom_density_ridges(scale = 0.9, 
-                              # alpha = 0.8,
-                              # rel_min_height = 0.01,
-                              quantile_lines = TRUE, quantiles = 2) +
-          scale_fill_manual(values = collection_pal) +
-          xlim(c(0, max(metadata_filt[,input$MetrictoPlot2]))) + #limit minimum of ridge to zero
-          xlab(input$MetrictoPlot2) +
-          ylab(input$Variable2) +
-          guides(fill=guide_legend(title=input$Variable2)) +
-          coord_cartesian(clip = "off") +
-          theme(plot.margin = unit(c(1.5,1,1,1), "cm"))
+      p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot_ridge], y = metadata_filt[,input$Variable_ridge], fill = fct_rev(metadata_filt[,input$Variable_ridge]))) + 
+            geom_density_ridges(scale = 0.9,
+                                quantile_lines = TRUE, quantiles = 2) +
+            scale_fill_manual(values = collection_pal) +
+            xlim(c(0, max(metadata_filt[,input$MetrictoPlot_ridge]))) + #limit minimum of ridge to zero
+            xlab(input$MetrictoPlot_ridge) +
+            ylab(input$Variable_ridge) +
+            guides(fill=guide_legend(title=input$Variable_ridge)) +
+            coord_cartesian(clip = "off") +
+            theme(plot.margin = unit(c(1.5,1,1,1), "cm"))
     }
     
     else {
@@ -540,7 +542,7 @@ server <- function(input, output, session) {
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
       p <- p + text(x = 0.5, y = 0.5, paste("No data fit these criteria.\n",
-                                            "Please select other parameters.\n"), 
+                                            "Please select different parameters.\n"), 
                     cex = 1.6, col = "black")
 
     }
@@ -565,23 +567,25 @@ server <- function(input, output, session) {
     collection_pal2 <- all_palette(length(collections2))
     names(collection_pal2) <- collections2
     
-    if (length(input$checkbox) >= 2) {
+    if (length(input$checkbox_heatmap) >= 2) {
       #create matrix to plot
-      metadata_vars <- metadata[,c("Program", "Description of diabetes status", input$checkbox)]
+      metadata_vars <- metadata[,c("Program", "Description of diabetes status", input$checkbox_heatmap)]
       metadata_vars <- metadata_vars[complete.cases(metadata[,continuous_vars]),]
-      metadata_vars[,input$checkbox] <- lapply(metadata_vars[,input$checkbox], as.numeric)
-      metadata_mat <- metadata_vars[,input$checkbox] %>% as.matrix() %>% scale()
+      metadata_vars[,input$checkbox_heatmap] <- lapply(metadata_vars[,input$checkbox_heatmap], as.numeric)
+      metadata_mat <- metadata_vars[,input$checkbox_heatmap] %>% as.matrix() %>% scale()
       
       #set up color palette
       col_fun <- colorRamp2(c(-3, 0, 3), hcl_palette = "Viridis")
       
       #draw heatmap
       row_ha <- rowAnnotation(Program = metadata_vars$Program, `Diabetes status` = metadata_vars$`Description of diabetes status`, col = list(Program = collection_pal, `Diabetes status` = collection_pal2))
-      draw(Heatmap(metadata_mat, right_annotation = row_ha, name = "Scaled value", 
+      p = grid.grabExpr(draw(Heatmap(metadata_mat, right_annotation = row_ha, name = "Scaled value", 
                    show_row_names = FALSE, row_title = "Donors", 
                    row_title_gp = gpar(fontsize = 16), row_title_side = "left",
                    col = col_fun), 
-           padding = unit(c(5, 5, 5, 5), "mm")) 
+           padding = unit(c(5, 5, 5, 5), "mm"))) 
+      p <- plot_grid(p, nrow = 1) #need to do this to save without png device
+      print(p)
     }
     
     else {
@@ -604,22 +608,22 @@ server <- function(input, output, session) {
   ##for correlation matrix tab
   corr_plot_fxn <- function() {
     
-    if (length(input$checkbox3) >= 2) {
+    if (length(input$checkbox_corr) >= 2) {
       #get values you want
-      metadata_vars <- metadata[,c("Program", input$checkbox3)]
-      metadata_vars[,input$checkbox3] <- lapply(metadata_vars[,input$checkbox3], as.numeric)
+      metadata_vars <- metadata[,c("Program", input$checkbox_corr)]
+      metadata_vars[,input$checkbox_corr] <- lapply(metadata_vars[,input$checkbox_corr], as.numeric)
       
-      if (input$corr_type == "pearson") {
+      if (input$corr_type_mat == "pearson") {
         plot_title <- "Pearson Correlation Matrix"
         legend_title <- "Pearson R"
       }
-      else if (input$corr_type == "spearman") {
+      else if (input$corr_type_mat == "spearman") {
         plot_title <- "Spearman Correlation Matrix"
         legend_title <- "Spearman Rho"
       }
       
       #get correlations
-      corr_all <- rcorr(as.matrix(metadata_vars[,-1]),type=input$corr_type)
+      corr_all <- rcorr(as.matrix(metadata_vars[,-1]),type=input$corr_type_mat)
       corr <- corr_all$r
       p_mat <- corr_all$P
       n_tests <- (length(p_mat) - length(diag(p_mat)))/2
@@ -640,8 +644,8 @@ server <- function(input, output, session) {
         mutate_all(labs.function)
       
       # Reshaping asterisks matrix to match ggcorrplot data output
-      p.labs$Var1 = as.factor(rownames(p.labs))
-      p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
+      p.labs$Var_x = as.factor(rownames(p.labs))
+      p.labs = melt(p.labs, id.vars = "Var_x", variable.name = "Var_y", value.name = "lab")
       
       # Initial ggcorrplot
       cor.plot = ggcorrplot(corr, hc.order = FALSE, type = "lower",
@@ -658,16 +662,16 @@ server <- function(input, output, session) {
         theme(plot.title = element_text(size = 16))
       
       # Subsetting asterisks matrix to only those rows within ggcorrplot data
-      p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2),
-                                        paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+      p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var_x, p.labs$Var_y),
+                                        paste0(cor.plot[["data"]]$Var_x, cor.plot[["data"]]$Var_y))),
                             "No", "Yes")
       
       p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
       
       # Add asterisks to ggcorrplot
       cor.plot.labs = cor.plot +
-        geom_text(aes(x = p.labs$Var1,
-                      y = p.labs$Var2),
+        geom_text(aes(x = p.labs$Var_x,
+                      y = p.labs$Var_y),
                   label = p.labs$lab,
                   nudge_y = 0.25,
                   size = 8) 
@@ -694,44 +698,44 @@ server <- function(input, output, session) {
   
   scatterPlot_fxn <- function() {
     #set up colors for plot
-    collections <- unique(metadata[,input$Color2]) %>% sort()
+    collections <- unique(metadata[,input$Color_scatter]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     
     #filtered df that removes NAs
-    metadata_filt <- metadata[!is.na(metadata[,input$Var1]) & 
-                                metadata[,input$Var1] != "" & 
-                                !is.na(metadata[,input$Var2]) &
-                                metadata[,input$Var2] != "",]
+    metadata_filt <- metadata[!is.na(metadata[,input$Var_x]) & 
+                                metadata[,input$Var_x] != "" & 
+                                !is.na(metadata[,input$Var_y]) &
+                                metadata[,input$Var_y] != "",]
     
     #calculate correlation
-    c <- cor.test(metadata_filt[,input$Var1], metadata_filt[,input$Var2], method = input$corr_type2)
+    c <- cor.test(metadata_filt[,input$Var_x], metadata_filt[,input$Var_y], method = input$corr_type_scatter)
     
     #generate a label for the correlation value shown on the graph
-    corr_lab <- ifelse(input$corr_type2 == "pearson", paste0("R = ", signif(c$estimate, 4)), paste0("Rho = ", signif(c$estimate, 4)))
+    corr_lab <- ifelse(input$corr_type_scatter == "pearson", paste0("R = ", signif(c$estimate, 4)), paste0("Rho = ", signif(c$estimate, 4)))
     
-    #filter values for NA in NEITHER column to get good location to put stats on plot
-    max_filt_val1 <- subset(metadata[,input$Var1], !is.na(metadata[,input$Var2]) & !is.na(metadata[,input$Var1])) %>% max()
-    max_filt_val2 <- subset(metadata[,input$Var2], !is.na(metadata[,input$Var1]) & !is.na(metadata[,input$Var2])) %>% max()
+    #filter values for NA in NEITHER column and get good location to put stats on plot
+    max_filt_val1 <- subset(metadata[,input$Var_x], !is.na(metadata[,input$Var_y]) & !is.na(metadata[,input$Var_x])) %>% max()
+    max_filt_val2 <- subset(metadata[,input$Var_y], !is.na(metadata[,input$Var_x]) & !is.na(metadata[,input$Var_y])) %>% max()
     
     #plot the data
-    p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$Var1], y = metadata_filt[,input$Var2], color = metadata_filt[,input$Color2])) + 
-      geom_point() + 
-      scale_color_manual(values = collection_pal) +
-      annotate("text", 
-               x = max_filt_val1*0.9, 
-               y=max_filt_val2, 
-               label = corr_lab,
-               size=8) +
-      annotate("text", 
-               x = max_filt_val1*0.9, 
-               y=max_filt_val2*0.9, 
-               label = paste0("p = ", signif(c$p.value, digits = 4)),
-               size=8) +
-      xlab(input$Var1) +
-      ylab(input$Var2) +
-      guides(color=guide_legend(title=input$Color2))
-    
+    p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$Var_x], y = metadata_filt[,input$Var_y], color = metadata_filt[,input$Color_scatter])) + 
+          geom_point() + 
+          scale_color_manual(values = collection_pal) +
+          annotate("text", 
+                   x = max_filt_val1*0.9, 
+                   y=max_filt_val2, 
+                   label = corr_lab,
+                   size=8) +
+          annotate("text", 
+                   x = max_filt_val1*0.9, 
+                   y=max_filt_val2*0.9, 
+                   label = paste0("p = ", signif(c$p.value, digits = 4)),
+                   size=8) +
+          xlab(input$Var_x) +
+          ylab(input$Var_y) +
+          guides(color=guide_legend(title=input$Color_scatter))
+        
     #add trend line or not
     if (input$plot_lm == "Yes") {
       p <- p + geom_smooth(method = "lm", color = "black")
@@ -751,19 +755,19 @@ server <- function(input, output, session) {
   
   pca_fxn <- function() {
     #set up color palettes
-    collections <- unique(metadata[,input$Color]) %>% sort()
+    collections <- unique(metadata[,input$Color_PCA]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- factor(collections)
     
     
-    if (length(input$checkbox2) >= 2) {
+    if (length(input$checkbox_pca) >= 2) {
       #do PCA
       df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
-      df_pca[,input$checkbox2] <- lapply(df_pca[,input$checkbox2], as.numeric)
-      res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
+      df_pca[,input$checkbox_pca] <- lapply(df_pca[,input$checkbox_pca], as.numeric)
+      res.pca <- prcomp(df_pca[,input$checkbox_pca], scale = TRUE)
       
       #what do you want to color by
-      groups <- factor(df_pca[,input$Color])
+      groups <- factor(df_pca[,input$Color_PCA])
       unq_pal <- collection_pal[names(collection_pal) %in% unique(groups)]
       
       #plot pca with color
@@ -772,7 +776,7 @@ server <- function(input, output, session) {
                           col.ind = groups,
                           palette = collection_pal,
                           label = FALSE,
-                          legend.title = input$Color)  +
+                          legend.title = input$Color_PCA)  +
           labs(x = "PC1",
                y = "PC2") +
           theme(axis.text = element_text(size=12),
@@ -781,19 +785,19 @@ server <- function(input, output, session) {
       }
       else if (input$Ellipses == "Yes") {
         
-        if (length(unique(df_pca[,input$Color])) < 2) {
-          nam_vec <- df_pca[,input$Color]
+        if (length(unique(df_pca[,input$Color_PCA])) < 2) {
+          nam_vec <- df_pca[,input$Color_PCA]
           col_vec <- rep(unq_pal[[1]], nrow(df_pca)) #%>% as.factor()
           names(col_vec) <- nam_vec
           names(unq_pal) <- as.character(names(unq_pal))
           unq_col <- unname(unq_pal)
           p <- fviz_pca_ind(res.pca,
-                            col.var = df_pca[,input$Color],
+                            col.var = df_pca[,input$Color_PCA],
                             col.ind = unq_pal,
                             label = FALSE,
                             addEllipses=TRUE,
                             ellipse.level=0.95,
-                            legend.title = input$Color,
+                            legend.title = input$Color_PCA,
                             legend.position = "right",
                             add.legend = TRUE) +
             labs(x = "PC1",
@@ -810,7 +814,7 @@ server <- function(input, output, session) {
                             label = FALSE,
                             addEllipses=TRUE,
                             ellipse.level=0.95,
-                            legend.title = input$Color) +
+                            legend.title = input$Color_PCA) +
             labs(x = "PC1", 
                  y = "PC2") +
             theme(axis.text = element_text(size=12),
@@ -829,6 +833,7 @@ server <- function(input, output, session) {
                     cex = 1.6, col = "black")
     }
     
+    p <- as.ggplot(p) #need to do this to save without png device
     print(p)
     
   }
@@ -840,11 +845,11 @@ server <- function(input, output, session) {
   
   pca_contribs_fxn <- function() {
     
-    if (length(input$checkbox2) >= 2) {
+    if (length(input$checkbox_pca) >= 2) {
       #do PCA
       df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
-      df_pca[,input$checkbox2] <- lapply(df_pca[,input$checkbox2], as.numeric)
-      res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
+      df_pca[,input$checkbox_pca] <- lapply(df_pca[,input$checkbox_pca], as.numeric)
+      res.pca <- prcomp(df_pca[,input$checkbox_pca], scale = TRUE)
       
       #plot variable contributions
       p <- fviz_contrib(res.pca, choice = "var", axes = as.numeric(input$PC), top = 10, fill = "#219197", color = "#219197", ggtheme = theme_classic()) +
@@ -862,6 +867,7 @@ server <- function(input, output, session) {
                     cex = 1.6, col = "black")
     }
     
+    p <- as.ggplot(p) #need to do this to save without png device
     print(p)
     
   }
@@ -875,7 +881,7 @@ server <- function(input, output, session) {
   
   donor_matrix_fxn <- function() {
     #filter df for tissue of interest
-    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue,  "-"))
+    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue_mat,  "-"))
     
     #get number of donors for each assay, then sort descending
     df_wide <- tissue_df %>% pivot_wider(names_from = dataset, id_cols = ID, values_from = dataset_tissue)
@@ -920,8 +926,10 @@ server <- function(input, output, session) {
                  show_heatmap_legend = FALSE,
                  show_column_names = FALSE,
                  row_names_gp = grid::gpar(fontsize = 14))
-    draw(ht, column_title = "Donors", column_title_gp = gpar(fontsize = 16), column_title_side = "bottom",
-         padding = unit(c(1, 1, 1, 1), "cm"))
+    p <- grid.grabExpr(draw(ht, column_title = "Donors", column_title_gp = gpar(fontsize = 16), column_title_side = "bottom",
+              padding = unit(c(1, 1, 1, 1), "cm")))
+    p <- plot_grid(p, nrow = 1) #need to do this to save plot without png device
+    print(p)
     
   }
   
@@ -936,7 +944,7 @@ server <- function(input, output, session) {
     #make sure there is at least one box checked
     if (length(input$checkbox_upset) >= 1) {
       #filter to tissue of interest
-      tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue3,  "-"))
+      tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue_upset,  "-"))
       tissue_df <- tissue_df %>% filter(dataset %in% input$checkbox_upset)
       
       #get list of donors in each dataset
@@ -968,14 +976,16 @@ server <- function(input, output, session) {
                  ),
                  row_names_gp = gpar(fontsize=16),
                  comb_col = "#94c95e",
-                 pt_size = unit(8, "mm"))
+                 pt_size = unit(min(8, 16-length(input$checkbox_upset)*1.75), "mm")) #make point size change with number of checked boxes
       ht = draw(ht, padding = unit(c(1, 1, 1, 1), "cm"))
       od = column_order(ht)
       decorate_annotation("Number of Donors", {
         grid.text(cs[od], x = seq_along(cs), y = unit(cs[od], "native") + unit(5, "pt"),
                   default.units = "native", just = c("center", "bottom"),
-                  gp = gpar(fontsize = 12, col = "black"), rot = 0)
+                  gp = gpar(fontsize = max(16-length(input$checkbox_upset)*1, 5), col = "black"), rot = 0) #make font size change with number of checked boxes
       })
+      p <- grid.grab()
+      p <- plot_grid(p, nrow = 1)
       
     }
     
@@ -1002,11 +1012,11 @@ server <- function(input, output, session) {
   
   donor_stacked_bar_fxn <- function() {
     #filter df for tissue of interest
-    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue2,  "-"))
+    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue_stacked,  "-"))
     tissue_df <- tissue_df %>% merge(metadata, on = "ID")
     
     #count number of donors in each group
-    calc_df <- tissue_df %>% merge(metadata, on = "ID") %>% summarise(n_counts = n(), .by = c(input$Grouping2, "dataset"))
+    calc_df <- tissue_df %>% merge(metadata, on = "ID") %>% summarise(n_counts = n(), .by = c(input$Grouping_stacked, "dataset"))
     
     #to get order of stacked bar
     summ_df <- calc_df %>% summarise(total_samps = sum(n_counts), .by = "dataset")
@@ -1014,7 +1024,7 @@ server <- function(input, output, session) {
     data_factors <- summ_df$dataset
     
     #set up color palette
-    collections <- unique(metadata[,input$Grouping2]) %>% sort()
+    collections <- unique(metadata[,input$Grouping_stacked]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     
@@ -1023,12 +1033,12 @@ server <- function(input, output, session) {
     
     #plot
     ggplot(calc_df, aes(y = n_counts, x = dataset)) + 
-      geom_bar(position = "stack", stat="identity", aes(fill = calc_df[,input$Grouping2]), color = "white") + 
+      geom_bar(position = "stack", stat="identity", aes(fill = calc_df[,input$Grouping_stacked]), color = "white") + 
       geom_text(data = summ_df, aes(x = dataset, y = total_samps+6, label = total_samps)) +
       scale_fill_manual(values = collection_pal) +
       ylab("Number of Donors") + xlab("Assay") +
-      ggtitle(input$Tissue2) +
-      guides(fill=guide_legend(title=input$Grouping2)) +
+      ggtitle(input$Tissue_stacked) +
+      guides(fill=guide_legend(title=input$Grouping_stacked)) +
       theme(axis.text.x = element_text(angle = 45, hjust=1), plot.title = element_text(hjust = 0.5))
     
   }
@@ -1091,9 +1101,7 @@ server <- function(input, output, session) {
   output$DownloadHeatmap <- downloadHandler(
     filename = function() {paste0("PanKbase_ClusterHeatmap_", Sys.time(), ".png")},
     content = function(file) {
-      png(file, width = 12, height = 8, units = "in", res = 300) 
-      heatmap_fxn()
-      dev.off()
+      save_plot(file, heatmap_fxn(), base_width = 12, base_height = 8) #have to turn into grid object and save this way because server doesn't have png device
     }
   )
   
@@ -1114,36 +1122,28 @@ server <- function(input, output, session) {
   output$DownloadPCA <- downloadHandler(
     filename = function() {paste0("PanKbase_PCA_", Sys.time(), ".png")},
     content = function(file) {
-      png(file, width = 10, height = 8, units = "in", res = 300)
-      pca_fxn()
-      dev.off()
+      ggsave(file, plot = pca_fxn(), width = 10, height = 8, units = "in", bg = "white")
     }
   )
   
   output$DownloadContribs <- downloadHandler(
     filename = function() {paste0("PanKbase_PCA_Contributions_", Sys.time(), ".png")},
     content = function(file) {
-      png(file, width = 12, height = 8, units = "in", res = 300) 
-      pca_contribs_fxn()
-      dev.off()
+      ggsave(file, plot = pca_contribs_fxn(), width = 12, height = 8, units = "in", bg = "white")
     }
   )
   
   output$DownloadDonorMat <- downloadHandler(
     filename = function() {paste0("PanKbase_DonorAssayMatrix_", Sys.time(), ".png")},
     content = function(file) {
-      png(file, width = 12, height = 4, units = "in", res = 300) 
-      donor_matrix_fxn()
-      dev.off()
+      save_plot(file, donor_matrix_fxn(), base_width = 12, base_height = 4) #have to turn into grid object and save this way because server doesn't have png device
     }
   )
   
   output$DownloadUpset <- downloadHandler(
     filename = function() {paste0("PanKbase_UpSetPlot_", Sys.time(), ".png")},
     content = function(file) {
-      png(file, width = 12, height = 6, units = "in", res = 300)
-      upset_fxn()
-      dev.off()
+      save_plot(file, upset_fxn(), base_width = 15, base_height = 6)
     }
   )
   
