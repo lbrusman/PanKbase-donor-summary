@@ -565,22 +565,34 @@ server <- function(input, output, session) {
     collection_pal2 <- all_palette(length(collections2))
     names(collection_pal2) <- collections2
     
-    #create matrix to plot
-    metadata_vars <- metadata[,c("Program", "Description of diabetes status", input$checkbox)]
-    metadata_vars <- metadata_vars[complete.cases(metadata[,continuous_vars]),]
-    metadata_vars[,input$checkbox] <- lapply(metadata_vars[,input$checkbox], as.numeric)
-    metadata_mat <- metadata_vars[,input$checkbox] %>% as.matrix() %>% scale()
+    if (length(input$checkbox) >= 2) {
+      #create matrix to plot
+      metadata_vars <- metadata[,c("Program", "Description of diabetes status", input$checkbox)]
+      metadata_vars <- metadata_vars[complete.cases(metadata[,continuous_vars]),]
+      metadata_vars[,input$checkbox] <- lapply(metadata_vars[,input$checkbox], as.numeric)
+      metadata_mat <- metadata_vars[,input$checkbox] %>% as.matrix() %>% scale()
+      
+      #set up color palette
+      col_fun <- colorRamp2(c(-3, 0, 3), hcl_palette = "Viridis")
+      
+      #draw heatmap
+      row_ha <- rowAnnotation(Program = metadata_vars$Program, `Diabetes status` = metadata_vars$`Description of diabetes status`, col = list(Program = collection_pal, `Diabetes status` = collection_pal2))
+      draw(Heatmap(metadata_mat, right_annotation = row_ha, name = "Scaled value", 
+                   show_row_names = FALSE, row_title = "Donors", 
+                   row_title_gp = gpar(fontsize = 16), row_title_side = "left",
+                   col = col_fun), 
+           padding = unit(c(5, 5, 5, 5), "mm")) 
+    }
     
-    #set up color palette
-    col_fun <- colorRamp2(c(-3, 0, 3), hcl_palette = "Viridis")
+    else {
+      #if no data, print error message
+      par(mar = c(0,0,0,0))
+      p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables.\n"), 
+                    cex = 1.6, col = "black")
+      print(p)
+    }
     
-    #draw heatmap
-    row_ha <- rowAnnotation(Program = metadata_vars$Program, `Diabetes status` = metadata_vars$`Description of diabetes status`, col = list(Program = collection_pal, `Diabetes status` = collection_pal2))
-    draw(Heatmap(metadata_mat, right_annotation = row_ha, name = "Scaled value", 
-                 show_row_names = FALSE, row_title = "Donors", 
-                 row_title_gp = gpar(fontsize = 16), row_title_side = "left",
-                 col = col_fun), 
-         padding = unit(c(5, 5, 5, 5), "mm")) 
   }
   
   output$heatmap <- renderPlot({
@@ -591,73 +603,86 @@ server <- function(input, output, session) {
   
   ##for correlation matrix tab
   corr_plot_fxn <- function() {
-    #get values you want
-    metadata_vars <- metadata[,c("Program", input$checkbox3)]
-    metadata_vars[,input$checkbox3] <- lapply(metadata_vars[,input$checkbox3], as.numeric)
     
-    if (input$corr_type == "pearson") {
-      plot_title <- "Pearson Correlation Matrix"
-      legend_title <- "Pearson R"
+    if (length(input$checkbox3) >= 2) {
+      #get values you want
+      metadata_vars <- metadata[,c("Program", input$checkbox3)]
+      metadata_vars[,input$checkbox3] <- lapply(metadata_vars[,input$checkbox3], as.numeric)
+      
+      if (input$corr_type == "pearson") {
+        plot_title <- "Pearson Correlation Matrix"
+        legend_title <- "Pearson R"
+      }
+      else if (input$corr_type == "spearman") {
+        plot_title <- "Spearman Correlation Matrix"
+        legend_title <- "Spearman Rho"
+      }
+      
+      #get correlations
+      corr_all <- rcorr(as.matrix(metadata_vars[,-1]),type=input$corr_type)
+      corr <- corr_all$r
+      p_mat <- corr_all$P
+      n_tests <- (length(p_mat) - length(diag(p_mat)))/2
+      
+      # Get p-value matrix
+      p.df = as.data.frame(p_mat)
+      p.df <-p.df*n_tests
+      # Function to get asterisks
+      labs.function = function(x){
+        case_when(x >= 0.05 ~ "",
+                  x < 0.05 & x >= 0.01 ~ "*",
+                  x < 0.01 & x >= 0.001 ~ "**",
+                  x < 0.001 ~ "***")
+      }
+      
+      # Get asterisks matrix based on p-values
+      p.labs = p.df  %>%                      
+        mutate_all(labs.function)
+      
+      # Reshaping asterisks matrix to match ggcorrplot data output
+      p.labs$Var1 = as.factor(rownames(p.labs))
+      p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
+      
+      # Initial ggcorrplot
+      cor.plot = ggcorrplot(corr, hc.order = FALSE, type = "lower",
+                            lab = TRUE,
+                            lab_size = 6,
+                            tl.cex = 16,
+                            title = plot_title) +
+        scale_fill_gradient2(legend_title,
+                             low = "#3A86FF", 
+                             mid = "white", 
+                             high = "#FD2244",
+                             midpoint = 0,
+                             limits = c(-1, 1)) +
+        theme(plot.title = element_text(size = 16))
+      
+      # Subsetting asterisks matrix to only those rows within ggcorrplot data
+      p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2),
+                                        paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+                            "No", "Yes")
+      
+      p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+      
+      # Add asterisks to ggcorrplot
+      cor.plot.labs = cor.plot +
+        geom_text(aes(x = p.labs$Var1,
+                      y = p.labs$Var2),
+                  label = p.labs$lab,
+                  nudge_y = 0.25,
+                  size = 8) 
+      print(cor.plot.labs)
     }
-    else if (input$corr_type == "spearman") {
-      plot_title <- "Spearman Correlation Matrix"
-      legend_title <- "Spearman Rho"
+    
+    else {
+      #if no data, print error message
+      par(mar = c(0,0,0,0))
+      p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables.\n"), 
+                    cex = 1.6, col = "black")
+      print(p)
     }
     
-    #get correlations
-    corr_all <- rcorr(as.matrix(metadata_vars[,-1]),type=input$corr_type)
-    corr <- corr_all$r
-    p_mat <- corr_all$P
-    n_tests <- (length(p_mat) - length(diag(p_mat)))/2
-    
-    # Get p-value matrix
-    p.df = as.data.frame(p_mat)
-    p.df <-p.df*n_tests
-    # Function to get asterisks
-    labs.function = function(x){
-      case_when(x >= 0.05 ~ "",
-                x < 0.05 & x >= 0.01 ~ "*",
-                x < 0.01 & x >= 0.001 ~ "**",
-                x < 0.001 ~ "***")
-    }
-    
-    # Get asterisks matrix based on p-values
-    p.labs = p.df  %>%                      
-      mutate_all(labs.function)
-    
-    # Reshaping asterisks matrix to match ggcorrplot data output
-    p.labs$Var1 = as.factor(rownames(p.labs))
-    p.labs = melt(p.labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
-    
-    # Initial ggcorrplot
-    cor.plot = ggcorrplot(corr, hc.order = FALSE, type = "lower",
-                          lab = TRUE,
-                          lab_size = 6,
-                          tl.cex = 16,
-                          title = plot_title) +
-      scale_fill_gradient2(legend_title,
-                           low = "#3A86FF", 
-                           mid = "white", 
-                           high = "#FD2244",
-                           midpoint = 0,
-                           limits = c(-1, 1)) +
-      theme(plot.title = element_text(size = 16))
-    
-    # Subsetting asterisks matrix to only those rows within ggcorrplot data
-    p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var1, p.labs$Var2),
-                                      paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
-                          "No", "Yes")
-    
-    p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
-    
-    # Add asterisks to ggcorrplot
-    cor.plot.labs = cor.plot +
-      geom_text(aes(x = p.labs$Var1,
-                    y = p.labs$Var2),
-                label = p.labs$lab,
-                nudge_y = 0.25,
-                size = 8) 
-    print(cor.plot.labs)
   }
   
   output$corr_plot <- renderPlot({
@@ -730,70 +755,82 @@ server <- function(input, output, session) {
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- factor(collections)
     
-    #do PCA
-    df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
-    df_pca[,input$checkbox2] <- lapply(df_pca[,input$checkbox2], as.numeric)
-    res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
     
-    #what do you want to color by
-    groups <- factor(df_pca[,input$Color])
-    unq_pal <- collection_pal[names(collection_pal) %in% unique(groups)]
-    
-    #plot pca with color
-    if (input$Ellipses == "No") {
-      p <- fviz_pca_ind(res.pca,
-                        col.ind = groups,
-                        palette = collection_pal,
-                        label = FALSE,
-                        legend.title = input$Color)  +
-        labs(x = "PC1",
-             y = "PC2") +
-        theme(axis.text = element_text(size=12),
-              axis.title = element_text(size=14),
-              plot.title = element_text(size=16))
-    }
-    else if (input$Ellipses == "Yes") {
+    if (length(input$checkbox2) >= 2) {
+      #do PCA
+      df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
+      df_pca[,input$checkbox2] <- lapply(df_pca[,input$checkbox2], as.numeric)
+      res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
       
-      if (length(unique(df_pca[,input$Color])) < 2) {
-        nam_vec <- df_pca[,input$Color]
-        col_vec <- rep(unq_pal[[1]], nrow(df_pca)) #%>% as.factor()
-        names(col_vec) <- nam_vec
-        names(unq_pal) <- as.character(names(unq_pal))
-        unq_col <- unname(unq_pal)
+      #what do you want to color by
+      groups <- factor(df_pca[,input$Color])
+      unq_pal <- collection_pal[names(collection_pal) %in% unique(groups)]
+      
+      #plot pca with color
+      if (input$Ellipses == "No") {
         p <- fviz_pca_ind(res.pca,
-                          col.var = df_pca[,input$Color],
-                          col.ind = unq_pal,
+                          col.ind = groups,
+                          palette = collection_pal,
                           label = FALSE,
-                          addEllipses=TRUE,
-                          ellipse.level=0.95,
-                          legend.title = input$Color,
-                          legend.position = "right",
-                          add.legend = TRUE) +
+                          legend.title = input$Color)  +
           labs(x = "PC1",
                y = "PC2") +
           theme(axis.text = element_text(size=12),
                 axis.title = element_text(size=14),
                 plot.title = element_text(size=16))
       }
-      
-      else {
-        p <- fviz_pca_ind(res.pca,
-                          col.ind = groups,
-                          palette = collection_pal,
-                          label = FALSE,
-                          addEllipses=TRUE,
-                          ellipse.level=0.95,
-                          legend.title = input$Color) +
-          labs(x = "PC1", 
-               y = "PC2") +
-          theme(axis.text = element_text(size=12),
-                axis.title = element_text(size=14),
-                plot.title = element_text(size=16))
+      else if (input$Ellipses == "Yes") {
+        
+        if (length(unique(df_pca[,input$Color])) < 2) {
+          nam_vec <- df_pca[,input$Color]
+          col_vec <- rep(unq_pal[[1]], nrow(df_pca)) #%>% as.factor()
+          names(col_vec) <- nam_vec
+          names(unq_pal) <- as.character(names(unq_pal))
+          unq_col <- unname(unq_pal)
+          p <- fviz_pca_ind(res.pca,
+                            col.var = df_pca[,input$Color],
+                            col.ind = unq_pal,
+                            label = FALSE,
+                            addEllipses=TRUE,
+                            ellipse.level=0.95,
+                            legend.title = input$Color,
+                            legend.position = "right",
+                            add.legend = TRUE) +
+            labs(x = "PC1",
+                 y = "PC2") +
+            theme(axis.text = element_text(size=12),
+                  axis.title = element_text(size=14),
+                  plot.title = element_text(size=16))
+        }
+        
+        else {
+          p <- fviz_pca_ind(res.pca,
+                            col.ind = groups,
+                            palette = collection_pal,
+                            label = FALSE,
+                            addEllipses=TRUE,
+                            ellipse.level=0.95,
+                            legend.title = input$Color) +
+            labs(x = "PC1", 
+                 y = "PC2") +
+            theme(axis.text = element_text(size=12),
+                  axis.title = element_text(size=14),
+                  plot.title = element_text(size=16))
+        }
+        
       }
-      
-      
     }
+    
+    else {
+      #if no data, print error message
+      par(mar = c(0,0,0,0))
+      p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables.\n"), 
+                    cex = 1.6, col = "black")
+    }
+    
     print(p)
+    
   }
   
   output$pca_plot <- renderPlot({
@@ -802,19 +839,31 @@ server <- function(input, output, session) {
   })
   
   pca_contribs_fxn <- function() {
-    #do PCA
-    df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
-    df_pca[,input$checkbox2] <- lapply(df_pca[,input$checkbox2], as.numeric)
-    res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
     
-    #plot variable contributions
-    p <- fviz_contrib(res.pca, choice = "var", axes = as.numeric(input$PC), top = 10, fill = "#219197", color = "#219197", ggtheme = theme_classic()) +
-      ggtitle(paste0("Contributions of variables to PC", input$PC)) +
-      theme(axis.text = element_text(size=12),
-            axis.title = element_text(size=14),
-            plot.title = element_text(size=16))
+    if (length(input$checkbox2) >= 2) {
+      #do PCA
+      df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
+      df_pca[,input$checkbox2] <- lapply(df_pca[,input$checkbox2], as.numeric)
+      res.pca <- prcomp(df_pca[,input$checkbox2], scale = TRUE)
+      
+      #plot variable contributions
+      p <- fviz_contrib(res.pca, choice = "var", axes = as.numeric(input$PC), top = 10, fill = "#219197", color = "#219197", ggtheme = theme_classic()) +
+        ggtitle(paste0("Contributions of variables to PC", input$PC)) +
+        theme(axis.text = element_text(size=12),
+              axis.title = element_text(size=14),
+              plot.title = element_text(size=16))
+          }
+    
+    else {
+      #if no data, print error message
+      par(mar = c(0,0,0,0))
+      p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables.\n"), 
+                    cex = 1.6, col = "black")
+    }
     
     print(p)
+    
   }
   
   output$pca_contribs <- renderPlot({
@@ -884,47 +933,64 @@ server <- function(input, output, session) {
   ##for upset plot tab
   
   upset_fxn <- function() {
-    #filter to tissue of interest
-    tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue3,  "-"))
-    tissue_df <- tissue_df %>% filter(dataset %in% input$checkbox_upset)
-    
-    #get list of donors in each dataset
-    lt <- list()
-    for (i in unique(tissue_df$dataset)) {
-      dons <- tissue_df$ID[tissue_df$dataset == i]
-      lt[[i]] <- dons
+    #make sure there is at least one box checked
+    if (length(input$checkbox_upset) >= 1) {
+      #filter to tissue of interest
+      tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue3,  "-"))
+      tissue_df <- tissue_df %>% filter(dataset %in% input$checkbox_upset)
+      
+      #get list of donors in each dataset
+      lt <- list()
+      for (i in unique(tissue_df$dataset)) {
+        dons <- tissue_df$ID[tissue_df$dataset == i]
+        lt[[i]] <- dons
+      }
+      
+      #make combination matrix
+      m1 <- make_comb_mat(lt, mode = "intersect")
+      ss = set_size(m1)
+      cs = comb_size(m1)
+      
+      #plot upset plot
+      ht = UpSet(m1,
+                 right_annotation = NULL,
+                 comb_order = order(comb_degree(m1), -cs),
+                 top_annotation = HeatmapAnnotation(
+                   "Number of Donors" = anno_barplot(cs,
+                                                     ylim = c(0, max(cs)*1.1),
+                                                     border = FALSE,
+                                                     height = unit(4, "cm"),
+                                                     gp = gpar(fill = "#219197", lty="blank"),
+                                                     axis_param = list(gp = gpar(fontsize=16))),
+                   annotation_name_gp = gpar(fontsize=16),
+                   
+                   annotation_name_side = "left"
+                 ),
+                 row_names_gp = gpar(fontsize=16),
+                 comb_col = "#94c95e",
+                 pt_size = unit(8, "mm"))
+      ht = draw(ht, padding = unit(c(1, 1, 1, 1), "cm"))
+      od = column_order(ht)
+      decorate_annotation("Number of Donors", {
+        grid.text(cs[od], x = seq_along(cs), y = unit(cs[od], "native") + unit(5, "pt"),
+                  default.units = "native", just = c("center", "bottom"),
+                  gp = gpar(fontsize = 12, col = "black"), rot = 0)
+      })
+      
     }
     
-    #make combination matrix
-    m1 <- make_comb_mat(lt, mode = "intersect")
-    ss = set_size(m1)
-    cs = comb_size(m1)
+    else {
+      #if no data, print error message
+      print("no data!")
+      par(mar = c(0,0,0,0))
+      p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 1 variable.\n"), 
+                    cex = 1.6, col = "black")
+      print(p)
+    }
     
-    #plot upset plot
-    ht = UpSet(m1,
-               right_annotation = NULL,
-               comb_order = order(comb_degree(m1), -cs),
-               top_annotation = HeatmapAnnotation(
-                 "Number of Donors" = anno_barplot(cs,
-                                                   ylim = c(0, max(cs)*1.1),
-                                                   border = FALSE,
-                                                   height = unit(4, "cm"),
-                                                   gp = gpar(fill = "#219197", lty="blank"),
-                                                   axis_param = list(gp = gpar(fontsize=16))),
-                 annotation_name_gp = gpar(fontsize=16),
-                 
-                 annotation_name_side = "left"
-               ),
-               row_names_gp = gpar(fontsize=16),
-               comb_col = "#94c95e",
-               pt_size = unit(8, "mm"))
-    ht = draw(ht, padding = unit(c(1, 1, 1, 1), "cm"))
-    od = column_order(ht)
-    decorate_annotation("Number of Donors", {
-      grid.text(cs[od], x = seq_along(cs), y = unit(cs[od], "native") + unit(5, "pt"),
-                default.units = "native", just = c("center", "bottom"),
-                gp = gpar(fontsize = 12, col = "black"), rot = 0)
-    })
+    
+    
   }
   
   output$upset <- renderPlot ({
