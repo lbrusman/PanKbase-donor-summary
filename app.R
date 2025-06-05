@@ -461,10 +461,10 @@ server <- function(input, output, session) {
     metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable_bar)
     metadata_summ$perc <- (metadata_summ$counts/sum(metadata_summ$counts))*100
     metadata_summ <- metadata_summ[order(metadata_summ[,1]),]
-    
-    #remove unknown values if you want to
+
+    #remove unknown values if selected
     if (input$RemoveNA == "Yes") {
-      metadata_summ <- metadata_summ[metadata_summ[,1] != "unknown" & metadata_summ[,1] != "Unknown" & metadata_summ[,1] != "NA" & metadata_summ[,1] != "",]
+      metadata_summ <- metadata_summ[metadata_summ[,1] != "Unknown",]
     }
     
     if (nrow(metadata_summ) > 0) {
@@ -514,18 +514,17 @@ server <- function(input, output, session) {
     }
     
     #remove values that are NA
-    metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$Variable_ridge]) & !metadata_filt[,input$Variable_ridge] %in% c("unknown", "NA", ""),]
     metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$MetrictoPlot_ridge]),]
     metadata_filt <- metadata_filt[order(metadata_filt[,input$Variable_ridge]),]
     metadata_filt[,input$Variable_ridge] <- metadata_filt[,input$Variable_ridge] %>% fct_rev()
     
-    #filter because must have at least 3 data points to plot a ridge
+    #filter because we must have at least 3 data points to plot a ridge
     metadata_filt <- metadata_filt %>% filter(n() > 2, .by = input$Variable_ridge)
     
     
     if (nrow(metadata_filt) > 1) {
-      #make a plot if there is enough data to make a plot
-      p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot_ridge], y = metadata_filt[,input$Variable_ridge], fill = fct_rev(metadata_filt[,input$Variable_ridge]))) + 
+      #make a plot if there is data to make a plot
+      p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot_ridge], y = metadata_filt[,input$Variable_ridge], fill = metadata_filt[,input$Variable_ridge])) + 
             geom_density_ridges(scale = 0.9,
                                 quantile_lines = TRUE, quantiles = 2) +
             scale_fill_manual(values = collection_pal) +
@@ -563,22 +562,22 @@ server <- function(input, output, session) {
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     
-    collections2 <- unique(metadata$`Description of diabetes status`) %>% sort()
-    collection_pal2 <- all_palette(length(collections2))
-    names(collection_pal2) <- collections2
+    collections_diab <- unique(metadata$`Description of diabetes status`) %>% sort()
+    collection_pal_diab <- all_palette(length(collections_diab))
+    names(collection_pal_diab) <- collections_diab
     
     if (length(input$checkbox_heatmap) >= 2) {
       #create matrix to plot
       metadata_vars <- metadata[,c("Program", "Description of diabetes status", input$checkbox_heatmap)]
-      metadata_vars <- metadata_vars[complete.cases(metadata[,continuous_vars]),]
-      metadata_vars[,input$checkbox_heatmap] <- lapply(metadata_vars[,input$checkbox_heatmap], as.numeric)
-      metadata_mat <- metadata_vars[,input$checkbox_heatmap] %>% as.matrix() %>% scale()
+      metadata_vars <- metadata_vars[complete.cases(metadata[,continuous_vars]),] #make sure no donors with NAs
+      metadata_vars[,input$checkbox_heatmap] <- lapply(metadata_vars[,input$checkbox_heatmap], as.numeric) #make sure columns to plot are numeric
+      metadata_mat <- metadata_vars[,input$checkbox_heatmap] %>% as.matrix() %>% scale() #scale matrix
       
-      #set up color palette
-      col_fun <- colorRamp2(c(-3, 0, 3), hcl_palette = "Viridis")
+      #set up color palette for the heatmap itself
+      col_fun <- colorRamp2(c(-4, 0, 4), hcl_palette = "Viridis")
       
       #draw heatmap
-      row_ha <- rowAnnotation(Program = metadata_vars$Program, `Diabetes status` = metadata_vars$`Description of diabetes status`, col = list(Program = collection_pal, `Diabetes status` = collection_pal2))
+      row_ha <- rowAnnotation(Program = metadata_vars$Program, `Diabetes status` = metadata_vars$`Description of diabetes status`, col = list(Program = collection_pal, `Diabetes status` = collection_pal_diab))
       p = grid.grabExpr(draw(Heatmap(metadata_mat, right_annotation = row_ha, name = "Scaled value", 
                    show_row_names = FALSE, row_title = "Donors", 
                    row_title_gp = gpar(fontsize = 16), row_title_side = "left",
@@ -602,12 +601,12 @@ server <- function(input, output, session) {
   output$heatmap <- renderPlot({
     heatmap_fxn()
   },
-  height = 600)
+  height = 600) #manually set height of heatmap
   
   
   ##for correlation matrix tab
   corr_plot_fxn <- function() {
-    
+    #make sure there are at least two variables to correlate
     if (length(input$checkbox_corr) >= 2) {
       #get values you want
       metadata_vars <- metadata[,c("Program", input$checkbox_corr)]
@@ -629,8 +628,8 @@ server <- function(input, output, session) {
       n_tests <- (length(p_mat) - length(diag(p_mat)))/2
       
       # Get p-value matrix
-      p.df = as.data.frame(p_mat)
-      p.df <-p.df*n_tests
+      p_df = as.data.frame(p_mat)
+      p_df <-p_df*n_tests
       # Function to get asterisks
       labs.function = function(x){
         case_when(x >= 0.05 ~ "",
@@ -640,13 +639,13 @@ server <- function(input, output, session) {
       }
       
       # Get asterisks matrix based on p-values
-      p.labs = p.df  %>%                      
+      p_labs = p_df  %>%                      
         mutate_all(labs.function)
       
       # Reshaping asterisks matrix to match ggcorrplot data output
-      p.labs$Var_x = as.factor(rownames(p.labs))
-      p.labs = melt(p.labs, id.vars = "Var_x", variable.name = "Var_y", value.name = "lab")
-      
+      p_labs$Var1 = as.factor(rownames(p_labs))
+      p_labs = melt(p_labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
+
       # Initial ggcorrplot
       cor.plot = ggcorrplot(corr, hc.order = FALSE, type = "lower",
                             lab = TRUE,
@@ -662,19 +661,19 @@ server <- function(input, output, session) {
         theme(plot.title = element_text(size = 16))
       
       # Subsetting asterisks matrix to only those rows within ggcorrplot data
-      p.labs$in.df = ifelse(is.na(match(paste0(p.labs$Var_x, p.labs$Var_y),
-                                        paste0(cor.plot[["data"]]$Var_x, cor.plot[["data"]]$Var_y))),
+      p_labs$in.df = ifelse(is.na(match(paste0(p_labs$Var1, p_labs$Var2),
+                                        paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
                             "No", "Yes")
-      
-      p.labs = select(filter(p.labs, in.df == "Yes"), -in.df)
+
+      p_labs = select(filter(p_labs, in.df == "Yes"), -in.df)
       
       # Add asterisks to ggcorrplot
       cor.plot.labs = cor.plot +
-        geom_text(aes(x = p.labs$Var_x,
-                      y = p.labs$Var_y),
-                  label = p.labs$lab,
+        geom_text(aes(x = p_labs$Var1,
+                      y = p_labs$Var2),
+                  label = p_labs$lab,
                   nudge_y = 0.25,
-                  size = 8) 
+                  size = 8)
       print(cor.plot.labs)
     }
     
@@ -692,7 +691,7 @@ server <- function(input, output, session) {
   output$corr_plot <- renderPlot({
     corr_plot_fxn()
   },
-  height = 600)
+  height = 600) #manually set height
   
   ##for scatter plot tab
   
