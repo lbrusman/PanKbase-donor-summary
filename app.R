@@ -31,13 +31,10 @@ set.seed(123)
 
 ## To start, we need to set up some global variables that we want to use in
 ## all functions 
-## ============================================================================
+## =============================================================================
 
 # Read in metadata files
 metadata <- read.csv("data/pankbase_human_donor_report_2025_5_27_17h_8m.csv")
-
-# Filter out "test" sample
-metadata <- metadata[metadata$ID != "<NA>",]
 
 # Change capitalization of some metadata fields
 metadata$Description.of.diabetes.status <- recode(metadata$Description.of.diabetes.status,
@@ -51,6 +48,7 @@ metadata$Description.of.diabetes.status <- recode(metadata$Description.of.diabet
                                                   "monogenic diabetes" = "Monogenic diabetes")
 
 metadata$Ethnicities <- recode(na_if(metadata$Ethnicities, ""),
+                               "African American,Black" = "African American, Black",
                                "Caucasian" = "White",
                                .missing = "Unknown")
 metadata$Sex <- recode(metadata$Sex,
@@ -65,7 +63,7 @@ metadata$Cause.of.Death <- recode(na_if(metadata$Cause.of.Death, ""),
                                   "Head Trauma" = "Head trauma",
                                   "ICH/stroke" = "ICH/Stroke",
                                   "Cerebral Edema (DKA)" = "Cerebral edema (DKA)",
-                                  "IHC" = "ICH",
+                                  # "IHC" = "ICH",
                                   .missing = "Unknown")
 
 
@@ -85,7 +83,7 @@ metadata <- metadata %>% rename("Program" = Collections,
                                 "Ethnicity" = Ethnicities)
 
 # Change NA AAB status to "Unknown"
-metadata <- metadata %>% mutate(across(starts_with("AAB."), ~ifelse( is.na(.x), "Unknown", .x)))
+metadata <- metadata %>% mutate(across(starts_with("AAB."), ~ifelse(is.na(.x), "Unknown", .x)))
 
 metadata <- metadata %>% rename("AAB-GADA Positive" = AAB.GADA.POSITIVE,
                                 "AAB-IA2 Positive" = AAB.IA2.POSITIVE,
@@ -98,9 +96,6 @@ categorical_vars <- c("Program", "Description of diabetes status", "Cause of dea
 # Get all continuous variables we want to plot
 continuous_vars <- c("Age (years)", "BMI", "C. Peptide (ng/ml)", "HbA1C percentage", "Hospital stay (hours)",
                      "AAB-GADA value (unit/ml)", "AAB-IA2 value (unit/ml)", "AAB-IAA value (unit/ml)", "AAB-ZNT8 value (unit/ml)")
-
-# Subset df to most important cols
-metadata_mini <- metadata[,categorical_vars]
 
 # Wrangle donor-by-assay data here
 data_avail <- metadata %>% select(c("ID", "Data.Available")) %>% filter(Data.Available != "")
@@ -138,16 +133,16 @@ ggplot2::theme_set(theme_classic(base_size=18))
 
 
 
-# Define UI for application ===================================================
+# Define UI for application ====================================================
 
 ui <- fluidPage(    
   shinybrowser::detect(),
   tags$head(
             tags$style(HTML("@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap');
-                            .tabbable > .nav > li > a                  {color:black; border-top: 5px solid transparent; border-left: 0px solid transparent; border-right: 0px solid transparent; border-bottom: 5px solid transparent}
-                            .tabbable > .nav > li[class=active]    > a {color:rgba(33, 145, 151, 1); border-top: 5px solid transparent; border-left: 0px solid transparent; border-right: 0px solid transparent; border-bottom: 5px solid rgba(33, 145, 151, 1)}
+                            .tabbable > .nav > li > a {color:black; border-top: 5px solid transparent; border-left: 0px solid transparent; border-right: 0px solid transparent; border-bottom: 5px solid transparent}
+                            .tabbable > .nav > li[class=active] > a {color:rgba(33, 145, 151, 1); border-top: 5px solid transparent; border-left: 0px solid transparent; border-right: 0px solid transparent; border-bottom: 5px solid rgba(33, 145, 151, 1)}
                             .tabbable > .nav > li > a:hover {color:rgba(33, 145, 151, 1); background-color:transparent}
-                            .well                {background-color: rgba(33, 145, 151, 0.8); color:black}
+                            .well {background-color: rgba(33, 145, 151, 0.8); color:black}
                             input[type='checkbox'] {accent-color:rgba(148, 201, 94, 1); color:black}
                             .selectize-dropdown-content {background-color: rgba(148, 201, 94, 1); color:black}
                             .selectize-dropdown-content .active {background-color:rgba(148, 201, 94, 1) !important; color:white !important}
@@ -171,7 +166,7 @@ ui <- fluidPage(
                             bsTooltip(id = "DataFilter_bar",
                                       title = "Select a program to subset the metadata"),
                             selectInput("Variable_bar", "Grouping:", 
-                                        choices=colnames(metadata_mini)),
+                                        choices=categorical_vars),
                             bsTooltip(id = "Variable_bar",
                                       title = "Select a grouping by which to separate donors"),
                             downloadButton("DownloadBar",
@@ -198,7 +193,7 @@ ui <- fluidPage(
                             bsTooltip(id = "DataFilter_ridge",
                                       title = "Select a program to subset the metadata"),
                             selectInput("Variable_ridge", "Grouping:",
-                                        choices=colnames(metadata_mini)),
+                                        choices=categorical_vars),
                             bsTooltip(id = "Variable_ridge",
                                       title = "Select a grouping by which to separate donors"),
                             selectInput("MetrictoPlot_ridge", "Metric:",
@@ -423,11 +418,15 @@ server <- function(input, output, session) {
   barPlot_fxn <- function() {
     # Filter if we want
     if (input$DataFilter_bar != "All") {
-      metadata_mini <- metadata_mini[metadata_mini[,"Program"] == input$DataFilter_bar,]
+      metadata_filt <- metadata[metadata[,"Program"] == input$DataFilter_bar,]
+    }
+    
+    else {
+      metadata_filt <- metadata
     }
     
     # Get number of counts by grouping and sort
-    metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable_bar)
+    metadata_summ <- metadata_filt %>% summarise(counts = n(), .by = input$Variable_bar)
     metadata_summ <- metadata_summ[order(metadata_summ[,1]),]
     
     # Set up color palettes
@@ -462,11 +461,15 @@ server <- function(input, output, session) {
 
     # Filter if we want
     if (input$DataFilter_bar != "All") {
-      metadata_mini <- metadata_mini[metadata_mini[,"Program"] == input$DataFilter_bar,]
+      metadata_filt <- metadata[metadata[,"Program"] == input$DataFilter_bar,]
+    }
+    
+    else {
+      metadata_filt <- metadata
     }
     
     # Subset data to be the data we want
-    metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable_bar)
+    metadata_summ <- metadata_filt %>% summarise(counts = n(), .by = input$Variable_bar)
     metadata_summ$perc <- (metadata_summ$counts/sum(metadata_summ$counts))*100
     metadata_summ <- metadata_summ[order(metadata_summ[,1]),]
 
@@ -1062,12 +1065,15 @@ server <- function(input, output, session) {
     # Plot
     p <- ggplot(calc_df, aes(y = n_counts, x = dataset)) + 
           geom_bar(position = "stack", stat="identity", aes(fill = calc_df[,input$Grouping_stacked]), color = "white") + 
-          geom_text(data = summ_df, aes(x = dataset, y = total_samps+6, label = total_samps)) +
+          geom_text(data = summ_df, aes(x = dataset, y = total_samps+6, label = total_samps), size = 5) +
           scale_fill_manual(values = collection_pal) +
-          ylab("Number of Donors") + xlab("Assay") +
+          ylab("Number of Donors") + 
+          xlab("Assay") +
           ggtitle(input$Tissue_stacked) +
           guides(fill=guide_legend(title=input$Grouping_stacked)) +
-          theme(axis.text.x = element_text(angle = 45, hjust=1), plot.title = element_text(hjust = 0.5))
+          theme(axis.text.x = element_text(angle = 45, hjust=1, size = 16),
+                axis.text.y = element_text(size = 16),
+                plot.title = element_text(hjust = 0.5))
     print(p)
     
   }
@@ -1105,7 +1111,8 @@ server <- function(input, output, session) {
 
 
 
-  # Make plot downloaders ------------------------------------------------------
+  ## Make plot downloaders -----------------------------------------------------
+  
   output$DownloadBar <- downloadHandler(
     filename = function() { paste0("PanKbase_BarPlot_", Sys.time(), ".png") },
     content = function(file) {
@@ -1130,7 +1137,7 @@ server <- function(input, output, session) {
   output$DownloadHeatmap <- downloadHandler(
     filename = function() {paste0("PanKbase_ClusterHeatmap_", Sys.time(), ".png")},
     content = function(file) {
-      save_plot(file, heatmap_fxn(), base_width = 12, base_height = 8) #have to turn into grid object and save this way because server doesn't have png device
+      save_plot(file, heatmap_fxn(), base_width = 12, base_height = 8) # Have to turn into grid object and save this way because server doesn't have png device
     }
   )
   
@@ -1165,7 +1172,7 @@ server <- function(input, output, session) {
   output$DownloadDonorMat <- downloadHandler(
     filename = function() {paste0("PanKbase_DonorAssayMatrix_", Sys.time(), ".png")},
     content = function(file) {
-      save_plot(file, donor_matrix_fxn(), base_width = 12, base_height = 4) #have to turn into grid object and save this way because server doesn't have png device
+      save_plot(file, donor_matrix_fxn(), base_width = 12, base_height = 4) # Have to turn into grid object and save this way because server doesn't have png device
     }
   )
   
@@ -1193,5 +1200,5 @@ server <- function(input, output, session) {
 }
 
 
-## Run the application 
+## Run the application =========================================================
 shinyApp(ui = ui, server = server)
