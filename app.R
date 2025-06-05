@@ -29,13 +29,17 @@ library(ggplotify)
 
 set.seed(123)
 
-#read in metadata files
+## To start, we need to set up some global variables that we want to use in
+## all functions 
+## ============================================================================
+
+# Read in metadata files
 metadata <- read.csv("data/pankbase_human_donor_report_2025_5_27_17h_8m.csv")
 
-#filter out "test" sample
+# Filter out "test" sample
 metadata <- metadata[metadata$ID != "<NA>",]
 
-#change capitalization of some metadata fields
+# Change capitalization of some metadata fields
 metadata$Description.of.diabetes.status <- recode(metadata$Description.of.diabetes.status,
                                                   "non-diabetic" = "No diabetes",
                                                   "type 1 diabetes" = "Type 1 diabetes",
@@ -55,7 +59,7 @@ metadata$Sex <- recode(metadata$Sex,
 metadata$Collections <- recode(metadata$Collections,
                                "IIDP,Prodo" = "IIDP")
 
-#rename values that have different capitalization so they get grouped together and change blanks to unknown
+# Rename values that have different capitalization so they get grouped together and change blanks to unknown
 metadata$Cause.of.Death <- recode(na_if(metadata$Cause.of.Death, ""),
                                   "Cerebrovascular/stroke" = "Cerebrovascular/Stroke",
                                   "Head Trauma" = "Head trauma",
@@ -66,7 +70,7 @@ metadata$Cause.of.Death <- recode(na_if(metadata$Cause.of.Death, ""),
 
 
 
-#rename columns to friendly names
+# Rename columns to friendly names
 metadata <- metadata %>% rename("Program" = Collections,
                                 "Age (years)" = Age..years.,
                                 "C. Peptide (ng/ml)" = C.Peptide..ng.ml.,
@@ -80,7 +84,7 @@ metadata <- metadata %>% rename("Program" = Collections,
                                 "Cause of death" = Cause.of.Death,
                                 "Ethnicity" = Ethnicities)
 
-#change NA AAB status to unknown
+# Change NA AAB status to "Unknown"
 metadata <- metadata %>% mutate(across(starts_with("AAB."), ~ifelse( is.na(.x), "Unknown", .x)))
 
 metadata <- metadata %>% rename("AAB-GADA Positive" = AAB.GADA.POSITIVE,
@@ -88,22 +92,22 @@ metadata <- metadata %>% rename("AAB-GADA Positive" = AAB.GADA.POSITIVE,
                                 "AAB-IAA Positive" = AAB.IAA.POSITIVE,
                                 "AAB-ZNT8 Positive" = AAB.ZNT8.POSITIVE)
 
-#get all categorical variables we want to plot
+# Get all categorical variables we want to plot
 categorical_vars <- c("Program", "Description of diabetes status", "Cause of death", "Sex", "Ethnicity",
                       "AAB-GADA Positive", "AAB-IA2 Positive", "AAB-IAA Positive", "AAB-ZNT8 Positive")
-#get all continuous variables we want to plot
+# Get all continuous variables we want to plot
 continuous_vars <- c("Age (years)", "BMI", "C. Peptide (ng/ml)", "HbA1C percentage", "Hospital stay (hours)",
                      "AAB-GADA value (unit/ml)", "AAB-IA2 value (unit/ml)", "AAB-IAA value (unit/ml)", "AAB-ZNT8 value (unit/ml)")
 
-#subset df to most important cols
+# Subset df to most important cols
 metadata_mini <- metadata[,categorical_vars]
 
-## Wrangle donor-by-assay data here
+# Wrangle donor-by-assay data here
 data_avail <- metadata %>% select(c("ID", "Data.Available")) %>% filter(Data.Available != "")
 data_avail$Data.Available2 <- gsub("\'","\"", data_avail$Data.Available, fixed=TRUE)
 data_avail$Data.Available3 <- gsub("[[:space:]]", "", data_avail$Data.Available2, fixed=TRUE)
 
-#get out df that has donor by assay by tissue info
+# Get out df that has donor by assay by tissue info
 all_donor_df <- data.frame()
 for (d in unique(data_avail$ID)) {
   mini_df <- data_avail %>% filter(ID == d)
@@ -115,7 +119,7 @@ for (d in unique(data_avail$ID)) {
   
 }
 
-#make dataset column look pretty
+# Make dataset column look pretty
 all_donor_df$dataset <- recode(all_donor_df$dataset,
                                "HLA_typing" = "HLA typing",
                                "RNAseq" = "RNA-seq",
@@ -125,16 +129,17 @@ all_donor_df$dataset <- recode(all_donor_df$dataset,
 islet_df <- all_donor_df %>% filter(dataset_tissue %in% c("Islet",  "-"))
 
 
-#set up universal color palette
+# Set up universal color palette
 all_palette <- colorRampPalette(c("#FFBE0B", "#FB5607", "#FF006E", "#8338EC", "#3A86FF"))
 
-#set default font size for ggplot
+# Set default font size for ggplot
 ggplot2::theme_set(theme_classic(base_size=18))
 
 
 
 
-# Define UI for application
+# Define UI for application ===================================================
+
 ui <- fluidPage(    
   shinybrowser::detect(),
   tags$head(
@@ -152,7 +157,8 @@ ui <- fluidPage(
 }
   "))),
   
-  #make tabset on main panel 
+  # Make tabset on main panel --------------------------------------------------
+  
   tabsetPanel(
 
     tabPanel("Donor Metadata Summary",
@@ -407,28 +413,29 @@ ui <- fluidPage(
              
 
 
-# Define server logic required to draw all plots
+## Define server logic required to draw all plots ==============================
+
 server <- function(input, output, session) {
 
-  ##for bar plots tab
+  ## For bar plots tab ---------------------------------------------------------
   
-  #create plot by itself first
+  # Create plot by itself first
   barPlot_fxn <- function() {
-    #filter if we want
+    # Filter if we want
     if (input$DataFilter_bar != "All") {
       metadata_mini <- metadata_mini[metadata_mini[,"Program"] == input$DataFilter_bar,]
     }
     
-    #get number of counts by grouping and sort
+    # Get number of counts by grouping and sort
     metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable_bar)
     metadata_summ <- metadata_summ[order(metadata_summ[,1]),]
     
-    #set up color palettes
+    # Set up color palettes
     collections <- unique(metadata[,input$Variable_bar]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
 
-    #make a plot
+    # Make a plot
     p <- ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable_bar], y=counts, x = metadata_summ[,input$Variable_bar])) + 
           geom_bar(stat="identity", position = "dodge2") +
           geom_text(aes(label=metadata_summ[,"counts"]), position=position_dodge(width=0.9), vjust=-0.25, size = 5) +
@@ -446,29 +453,30 @@ server <- function(input, output, session) {
     barPlot_fxn()
   })
   
+  # Now to make the stacked bar plot
   stackedBar_fxn <- function() {
-    #set up color palettes
+    # Set up color palettes
     collections <- unique(metadata[,input$Variable_bar]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
 
-    #filter if we want
+    # Filter if we want
     if (input$DataFilter_bar != "All") {
       metadata_mini <- metadata_mini[metadata_mini[,"Program"] == input$DataFilter_bar,]
     }
     
-    #subset data to be the data we want
+    # Subset data to be the data we want
     metadata_summ <- metadata_mini %>% summarise(counts = n(), .by = input$Variable_bar)
     metadata_summ$perc <- (metadata_summ$counts/sum(metadata_summ$counts))*100
     metadata_summ <- metadata_summ[order(metadata_summ[,1]),]
 
-    #remove unknown values if selected
+    # Remove unknown values if selected
     if (input$RemoveNA == "Yes") {
       metadata_summ <- metadata_summ[metadata_summ[,1] != "Unknown",]
     }
     
     if (nrow(metadata_summ) > 0) {
-      #make a plot if there is data to plot
+      # Make a plot if there is data to plot
       p <- ggplot(metadata_summ, aes(fill=metadata_summ[,input$Variable_bar], y=perc, x = input$DataFilter_bar)) + 
             geom_bar(stat="identity", color = "white") +
             scale_fill_manual(values = collection_pal) +
@@ -481,7 +489,7 @@ server <- function(input, output, session) {
     }
     
     else {
-      #if no data, print error message
+      # If no data, print error message
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
       p <- p + text(x = 0.5, y = 0.5, paste("No data fit these criteria.\n",
@@ -497,15 +505,15 @@ server <- function(input, output, session) {
   })
 
   
-  ##for ridgelines tab
+  ## For ridgelines tab --------------------------------------------------------
   
   ridgelines_fxn <- function() {
-    #set up colors for plot
+    # Set up colors for plot
     collections <- unique(metadata[,input$Variable_ridge]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     
-    #filter if we want
+    # Filter if option chosen
     if (input$DataFilter_ridge != "All") {
       metadata_filt <- metadata[metadata[,"Program"] == input$DataFilter_ridge,]
     }
@@ -523,7 +531,7 @@ server <- function(input, output, session) {
     
     
     if (nrow(metadata_filt) > 1) {
-      #make a plot if there is data to make a plot
+      # Make a plot if there is data to make a plot
       p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot_ridge], y = metadata_filt[,input$Variable_ridge], fill = metadata_filt[,input$Variable_ridge])) + 
             geom_density_ridges(scale = 0.9,
                                 quantile_lines = TRUE, quantiles = 2) +
@@ -537,7 +545,7 @@ server <- function(input, output, session) {
     }
     
     else {
-      #if no data, print error message
+      # If no data, print error message
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
       p <- p + text(x = 0.5, y = 0.5, paste("No data fit these criteria.\n",
@@ -554,7 +562,7 @@ server <- function(input, output, session) {
   })
   
   
-  ##for clustering heatmap tab
+  ## For clustering heatmap tab ------------------------------------------------
   
   heatmap_fxn <- function() {
     #set up colors for plot
@@ -577,12 +585,25 @@ server <- function(input, output, session) {
       col_fun <- colorRamp2(c(-4, 0, 4), hcl_palette = "Viridis")
       
       #draw heatmap
-      row_ha <- rowAnnotation(Program = metadata_vars$Program, `Diabetes status` = metadata_vars$`Description of diabetes status`, col = list(Program = collection_pal, `Diabetes status` = collection_pal_diab))
-      p = grid.grabExpr(draw(Heatmap(metadata_mat, right_annotation = row_ha, name = "Scaled value", 
-                   show_row_names = FALSE, row_title = "Donors", 
-                   row_title_gp = gpar(fontsize = 16), row_title_side = "left",
-                   col = col_fun), 
-           padding = unit(c(5, 5, 5, 5), "mm"))) 
+      row_ha <- rowAnnotation(Program = metadata_vars$Program, 
+                              `Diabetes status` = metadata_vars$`Description of diabetes status`, 
+                              col = list(Program = collection_pal, 
+                                         `Diabetes status` = collection_pal_diab),
+                              annotation_name_gp = gpar(fontsize = 16),
+                              annotation_legend_param = list(title_gp = gpar(fontsize = 16, fontface = "bold"),
+                                                             labels_gp = gpar(fontsize = 16)))
+      p = grid.grabExpr(draw(Heatmap(metadata_mat, #need grid.grabExpr to save plot without png
+                                     right_annotation = row_ha,
+                                     name = "Scaled value", 
+                                     show_row_names = FALSE, row_title = "Donors", 
+                                     row_title_gp = gpar(fontsize = 20),
+                                     row_title_side = "left",
+                                     column_names_gp = gpar(fontsize = 16),
+                                     column_names_rot = 45,
+                                     heatmap_legend_param = list(title_gp = gpar(fontsize = 16, fontface = "bold"),
+                                                                 labels_gp = gpar(fontsize = 16)),
+                                     col = col_fun), 
+                             padding = unit(c(5, 5, 5, 5), "mm"))) 
       p <- plot_grid(p, nrow = 1) #need to do this to save without png device
       print(p)
     }
@@ -591,7 +612,7 @@ server <- function(input, output, session) {
       #if no data, print error message
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables.\n"), 
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables."), 
                     cex = 1.6, col = "black")
       print(p)
     }
@@ -604,7 +625,7 @@ server <- function(input, output, session) {
   height = 600) #manually set height of heatmap
   
   
-  ##for correlation matrix tab
+  ## For correlation matrix tab ------------------------------------------------
   corr_plot_fxn <- function() {
     #make sure there are at least two variables to correlate
     if (length(input$checkbox_corr) >= 2) {
@@ -628,10 +649,10 @@ server <- function(input, output, session) {
       n_tests <- (length(p_mat) - length(diag(p_mat)))/2
       
       # Get p-value matrix
-      p_df = as.data.frame(p_mat)
-      p_df <-p_df*n_tests
+      p_df <- as.data.frame(p_mat)
+      p_df <- p_df*n_tests
       # Function to get asterisks
-      labs.function = function(x){
+      labs_function <- function(x){
         case_when(x >= 0.05 ~ "",
                   x < 0.05 & x >= 0.01 ~ "*",
                   x < 0.01 & x >= 0.001 ~ "**",
@@ -639,49 +660,48 @@ server <- function(input, output, session) {
       }
       
       # Get asterisks matrix based on p-values
-      p_labs = p_df  %>%                      
-        mutate_all(labs.function)
+      p_labs <- p_df %>% mutate_all(labs_function)
       
       # Reshaping asterisks matrix to match ggcorrplot data output
-      p_labs$Var1 = as.factor(rownames(p_labs))
+      p_labs$Var1 <- as.factor(rownames(p_labs))
       p_labs = melt(p_labs, id.vars = "Var1", variable.name = "Var2", value.name = "lab")
 
       # Initial ggcorrplot
-      cor.plot = ggcorrplot(corr, hc.order = FALSE, type = "lower",
+      p <- ggcorrplot(corr, hc.order = FALSE, type = "lower",
                             lab = TRUE,
                             lab_size = 6,
                             tl.cex = 16,
                             title = plot_title) +
-        scale_fill_gradient2(legend_title,
-                             low = "#3A86FF", 
-                             mid = "white", 
-                             high = "#FD2244",
-                             midpoint = 0,
-                             limits = c(-1, 1)) +
-        theme(plot.title = element_text(size = 16))
+          scale_fill_gradient2(legend_title,
+                               low = "#3A86FF", 
+                               mid = "white", 
+                               high = "#FD2244",
+                               midpoint = 0,
+                               limits = c(-1, 1)) +
+          theme(plot.title = element_text(size = 16))
       
       # Subsetting asterisks matrix to only those rows within ggcorrplot data
-      p_labs$in.df = ifelse(is.na(match(paste0(p_labs$Var1, p_labs$Var2),
-                                        paste0(cor.plot[["data"]]$Var1, cor.plot[["data"]]$Var2))),
+      p_labs$in_df <- ifelse(is.na(match(paste0(p_labs$Var1, p_labs$Var2),
+                                        paste0(p[["data"]]$Var1, p[["data"]]$Var2))),
                             "No", "Yes")
 
-      p_labs = select(filter(p_labs, in.df == "Yes"), -in.df)
+      p_labs <- select(filter(p_labs, in_df == "Yes"), -in_df)
       
       # Add asterisks to ggcorrplot
-      cor.plot.labs = cor.plot +
+      p <- p + 
         geom_text(aes(x = p_labs$Var1,
                       y = p_labs$Var2),
-                  label = p_labs$lab,
-                  nudge_y = 0.25,
-                  size = 8)
-      print(cor.plot.labs)
+                      label = p_labs$lab,
+                      nudge_y = 0.25,
+                      size = 8)
+      print(p)
     }
     
     else {
-      #if no data, print error message
+      # If no data, print error message
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables.\n"), 
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables."), 
                     cex = 1.6, col = "black")
       print(p)
     }
@@ -691,9 +711,9 @@ server <- function(input, output, session) {
   output$corr_plot <- renderPlot({
     corr_plot_fxn()
   },
-  height = 600) #manually set height
+  height = 600) # Manually set height
   
-  ##for scatter plot tab
+  ## For scatter plot tab ------------------------------------------------------
   
   scatterPlot_fxn <- function() {
     #set up colors for plot
@@ -701,41 +721,41 @@ server <- function(input, output, session) {
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     
-    #filtered df that removes NAs
+    # Filtered df that removes NAs
     metadata_filt <- metadata[!is.na(metadata[,input$Var_x]) & 
                                 metadata[,input$Var_x] != "" & 
                                 !is.na(metadata[,input$Var_y]) &
                                 metadata[,input$Var_y] != "",]
     
-    #calculate correlation
+    # Calculate correlation
     c <- cor.test(metadata_filt[,input$Var_x], metadata_filt[,input$Var_y], method = input$corr_type_scatter)
     
-    #generate a label for the correlation value shown on the graph
+    # Generate a label for the correlation value shown on the graph
     corr_lab <- ifelse(input$corr_type_scatter == "pearson", paste0("R = ", signif(c$estimate, 4)), paste0("Rho = ", signif(c$estimate, 4)))
     
-    #filter values for NA in NEITHER column and get good location to put stats on plot
-    max_filt_val1 <- subset(metadata[,input$Var_x], !is.na(metadata[,input$Var_y]) & !is.na(metadata[,input$Var_x])) %>% max()
-    max_filt_val2 <- subset(metadata[,input$Var_y], !is.na(metadata[,input$Var_x]) & !is.na(metadata[,input$Var_y])) %>% max()
+    # Filter values out if NA in EITHER column and get good location to put stats on plot
+    max_filt_val_x <- subset(metadata[,input$Var_x], !is.na(metadata[,input$Var_y]) & !is.na(metadata[,input$Var_x])) %>% max()
+    max_filt_val_y <- subset(metadata[,input$Var_y], !is.na(metadata[,input$Var_x]) & !is.na(metadata[,input$Var_y])) %>% max()
     
-    #plot the data
+    # Plot the data
     p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$Var_x], y = metadata_filt[,input$Var_y], color = metadata_filt[,input$Color_scatter])) + 
           geom_point() + 
           scale_color_manual(values = collection_pal) +
           annotate("text", 
-                   x = max_filt_val1*0.9, 
-                   y=max_filt_val2, 
+                   x = max_filt_val_x*0.9, 
+                   y=max_filt_val_y, 
                    label = corr_lab,
                    size=8) +
           annotate("text", 
-                   x = max_filt_val1*0.9, 
-                   y=max_filt_val2*0.9, 
+                   x = max_filt_val_x*0.9, 
+                   y=max_filt_val_y*0.9, 
                    label = paste0("p = ", signif(c$p.value, digits = 4)),
                    size=8) +
           xlab(input$Var_x) +
           ylab(input$Var_y) +
           guides(color=guide_legend(title=input$Color_scatter))
         
-    #add trend line or not
+    # Add trend line or not
     if (input$plot_lm == "Yes") {
       p <- p + geom_smooth(method = "lm", color = "black")
     }
@@ -750,43 +770,43 @@ server <- function(input, output, session) {
   })
   
   
-  ##for PCA tab
+  ## For PCA tab ---------------------------------------------------------------
   
   pca_fxn <- function() {
-    #set up color palettes
+    # Set up color palettes
     collections <- unique(metadata[,input$Color_PCA]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- factor(collections)
     
-    
+    # Make sure there are enough variables for PCA
     if (length(input$checkbox_pca) >= 2) {
-      #do PCA
-      df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
-      df_pca[,input$checkbox_pca] <- lapply(df_pca[,input$checkbox_pca], as.numeric)
+      # Do PCA
+      df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),] #take out donors with NAs
+      df_pca[,input$checkbox_pca] <- lapply(df_pca[,input$checkbox_pca], as.numeric) #make sure columns are numeric
       res.pca <- prcomp(df_pca[,input$checkbox_pca], scale = TRUE)
       
-      #what do you want to color by
+      # What do you want to color by
       groups <- factor(df_pca[,input$Color_PCA])
       unq_pal <- collection_pal[names(collection_pal) %in% unique(groups)]
       
-      #plot pca with color
+      # Plot pca with color
       if (input$Ellipses == "No") {
         p <- fviz_pca_ind(res.pca,
                           col.ind = groups,
                           palette = collection_pal,
                           label = FALSE,
                           legend.title = input$Color_PCA)  +
-          labs(x = "PC1",
-               y = "PC2") +
-          theme(axis.text = element_text(size=12),
-                axis.title = element_text(size=14),
-                plot.title = element_text(size=16))
+              labs(x = "PC1",
+                   y = "PC2") +
+              theme(axis.text = element_text(size=12),
+                    axis.title = element_text(size=14),
+                    plot.title = element_text(size=16))
       }
       else if (input$Ellipses == "Yes") {
         
         if (length(unique(df_pca[,input$Color_PCA])) < 2) {
           nam_vec <- df_pca[,input$Color_PCA]
-          col_vec <- rep(unq_pal[[1]], nrow(df_pca)) #%>% as.factor()
+          col_vec <- rep(unq_pal[[1]], nrow(df_pca))
           names(col_vec) <- nam_vec
           names(unq_pal) <- as.character(names(unq_pal))
           unq_col <- unname(unq_pal)
@@ -799,14 +819,14 @@ server <- function(input, output, session) {
                             legend.title = input$Color_PCA,
                             legend.position = "right",
                             add.legend = TRUE) +
-            labs(x = "PC1",
-                 y = "PC2") +
-            theme(axis.text = element_text(size=12),
-                  axis.title = element_text(size=14),
-                  plot.title = element_text(size=16))
+                labs(x = "PC1",
+                     y = "PC2") +
+                theme(axis.text = element_text(size=12),
+                      axis.title = element_text(size=14),
+                      plot.title = element_text(size=16))
         }
         
-        else {
+        else { # Need to set up the ellipses this way if only one color grouping
           p <- fviz_pca_ind(res.pca,
                             col.ind = groups,
                             palette = collection_pal,
@@ -814,21 +834,21 @@ server <- function(input, output, session) {
                             addEllipses=TRUE,
                             ellipse.level=0.95,
                             legend.title = input$Color_PCA) +
-            labs(x = "PC1", 
-                 y = "PC2") +
-            theme(axis.text = element_text(size=12),
-                  axis.title = element_text(size=14),
-                  plot.title = element_text(size=16))
+                labs(x = "PC1", 
+                     y = "PC2") +
+                theme(axis.text = element_text(size=12),
+                      axis.title = element_text(size=14),
+                      plot.title = element_text(size=16))
         }
         
       }
     }
     
     else {
-      #if no data, print error message
+      # If no data, print error message
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables.\n"), 
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables."), 
                     cex = 1.6, col = "black")
     }
     
@@ -843,26 +863,26 @@ server <- function(input, output, session) {
   })
   
   pca_contribs_fxn <- function() {
-    
+    # Make sure there are enough variables for PCA
     if (length(input$checkbox_pca) >= 2) {
-      #do PCA
+      # Do PCA
       df_pca <- metadata[complete.cases(metadata[ , continuous_vars]),]
       df_pca[,input$checkbox_pca] <- lapply(df_pca[,input$checkbox_pca], as.numeric)
       res.pca <- prcomp(df_pca[,input$checkbox_pca], scale = TRUE)
       
-      #plot variable contributions
+      # Plot variable contributions
       p <- fviz_contrib(res.pca, choice = "var", axes = as.numeric(input$PC), top = 10, fill = "#219197", color = "#219197", ggtheme = theme_classic()) +
-        ggtitle(paste0("Contributions of variables to PC", input$PC)) +
-        theme(axis.text = element_text(size=12),
-              axis.title = element_text(size=14),
-              plot.title = element_text(size=16))
+            ggtitle(paste0("Contributions of variables to PC", input$PC)) +
+            theme(axis.text = element_text(size=12),
+                  axis.title = element_text(size=14),
+                  plot.title = element_text(size=16))
           }
     
     else {
-      #if no data, print error message
+      # If no data, print error message
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables.\n"), 
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables."), 
                     cex = 1.6, col = "black")
     }
     
@@ -876,13 +896,13 @@ server <- function(input, output, session) {
   })
   
   
-  ##for donor matrix tab
+  ## For donor matrix tab ------------------------------------------------------
   
   donor_matrix_fxn <- function() {
-    #filter df for tissue of interest
+    # Filter df for tissue of interest
     tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue_mat,  "-"))
     
-    #get number of donors for each assay, then sort descending
+    # Get number of donors for each assay, then sort descending so they are plotted in that order
     df_wide <- tissue_df %>% pivot_wider(names_from = dataset, id_cols = ID, values_from = dataset_tissue)
     cols <- colnames(df_wide)[-1]
     df_wide[cols] <- +(!is.na(df_wide[cols]))
@@ -890,33 +910,38 @@ server <- function(input, output, session) {
     df_wide$sum <- rowSums(df_wide[cols])
     df_wide <- df_wide[order(df_wide$`Description of diabetes status`, -df_wide$sum),]
     
-    #get out columns you want to plot in matrix
+    # Get out columns you want to plot in matrix
     to_plot <- as.matrix(df_wide[,cols]) %>% t()
     
-    #set up colors
+    # Set up colors
     col_fun <- colorRamp2(c(0, 1), c("#fafafa", "#219197"))
     collections <- unique(metadata[,"Description of diabetes status"]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     color_this_plot <- collection_pal[c("No diabetes", "Type 1 diabetes", "Type 2 diabetes")]
     
-    #get top heatmap annotation
+    # Get top heatmap annotation
     ha <- HeatmapAnnotation(`Diabetes status` = df_wide$`Description of diabetes status`,
                             col = list(`Diabetes status` = color_this_plot),
                             show_annotation_name = FALSE,
                             show_legend = FALSE)
-    #add barplot of sums on the right
+    # Add barplot of sums on the right
     ra <- rowAnnotation(`Total # Donors` = anno_barplot(rowSums(to_plot),
                                                         gp = gpar(fill = "#94c95e", lty="blank"),
                                                         border = FALSE,
                                                         axis_param = list(labels_rot = 0,
-                                                                          side = "bottom"),
+                                                                          side = "bottom",
+                                                                          gp = gpar(fontsize=14)),
                                                         width = unit(4, "cm")),
-                        `# Donors2` = anno_text(rowSums(to_plot)))
+                        `# Donors2` = anno_text(rowSums(to_plot), gp = gpar(fontsize = 14)),
+                        annotation_name_gp = gpar(fontsize = 14))
     
-    #draw matrix
-    ht = Heatmap(to_plot, name = "Donor Assay Availability", top_annotation = ha, right_annotation = ra,
-                 cluster_rows = FALSE, cluster_columns = FALSE, 
+    # Draw matrix
+    ht = Heatmap(to_plot, name = "Donor Assay Availability", 
+                 top_annotation = ha, 
+                 right_annotation = ra,
+                 cluster_rows = FALSE, 
+                 cluster_columns = FALSE, 
                  row_order = c("scRNA-seq", "RNA-seq", "snATAC-seq", "ATAC-seq", "Genotyping", "HLA typing", "Function", "Morphology", "CyTof", "WGBS", "Imaging"),
                  row_names_side = "left",
                  col = col_fun, 
@@ -924,9 +949,12 @@ server <- function(input, output, session) {
                  column_split = df_wide$`Description of diabetes status`,
                  show_heatmap_legend = FALSE,
                  show_column_names = FALSE,
-                 row_names_gp = grid::gpar(fontsize = 14))
-    p <- grid.grabExpr(draw(ht, column_title = "Donors", column_title_gp = gpar(fontsize = 16), column_title_side = "bottom",
-              padding = unit(c(1, 1, 1, 1), "cm")))
+                 row_names_gp = gpar(fontsize = 14))
+    p <- grid.grabExpr(draw(ht, 
+                            column_title = "Donors", 
+                            column_title_gp = gpar(fontsize = 18), 
+                            column_title_side = "bottom",
+                            padding = unit(c(1, 1, 1, 1), "cm")))
     p <- plot_grid(p, nrow = 1) #need to do this to save plot without png device
     print(p)
     
@@ -937,51 +965,53 @@ server <- function(input, output, session) {
   })
   
   
-  ##for upset plot tab
+  ## For UpSet plot tab --------------------------------------------------------
   
   upset_fxn <- function() {
-    #make sure there is at least one box checked
+    # Make sure there is at least one box checked
     if (length(input$checkbox_upset) >= 1) {
-      #filter to tissue of interest
+      # Filter to tissue of interest
       tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue_upset,  "-"))
       tissue_df <- tissue_df %>% filter(dataset %in% input$checkbox_upset)
       
-      #get list of donors in each dataset
+      # Get list of donors in each dataset
       lt <- list()
       for (i in unique(tissue_df$dataset)) {
         dons <- tissue_df$ID[tissue_df$dataset == i]
         lt[[i]] <- dons
       }
       
-      #make combination matrix
+      # Make combination matrix
       m1 <- make_comb_mat(lt, mode = "intersect")
-      ss = set_size(m1)
       cs = comb_size(m1)
       
-      #plot upset plot
+      # Plot upset plot
       ht = UpSet(m1,
                  right_annotation = NULL,
                  comb_order = order(comb_degree(m1), -cs),
-                 top_annotation = HeatmapAnnotation(
-                   "Number of Donors" = anno_barplot(cs,
-                                                     ylim = c(0, max(cs)*1.1),
-                                                     border = FALSE,
-                                                     height = unit(4, "cm"),
-                                                     gp = gpar(fill = "#219197", lty="blank"),
-                                                     axis_param = list(gp = gpar(fontsize=16))),
-                   annotation_name_gp = gpar(fontsize=16),
-                   
-                   annotation_name_side = "left"
-                 ),
+                 top_annotation = HeatmapAnnotation("Number of Donors" = anno_barplot(cs,
+                                                                                      ylim = c(0, max(cs)*1.1),
+                                                                                      border = FALSE,
+                                                                                      height = unit(4, "cm"),
+                                                                                      gp = gpar(fill = "#219197", 
+                                                                                                lty="blank"),
+                                                                                      axis_param = list(gp = gpar(fontsize=16))),
+                                                    annotation_name_gp = gpar(fontsize=16),
+                                                    annotation_name_side = "left"),
                  row_names_gp = gpar(fontsize=16),
                  comb_col = "#94c95e",
-                 pt_size = unit(min(8, 16-length(input$checkbox_upset)*1.75), "mm")) #make point size change with number of checked boxes
+                 pt_size = unit(min(8, 16-length(input$checkbox_upset)*1.75), "mm")) # Make point size change with number of checked boxes
       ht = draw(ht, padding = unit(c(1, 1, 1, 1), "cm"))
       od = column_order(ht)
       decorate_annotation("Number of Donors", {
-        grid.text(cs[od], x = seq_along(cs), y = unit(cs[od], "native") + unit(5, "pt"),
-                  default.units = "native", just = c("center", "bottom"),
-                  gp = gpar(fontsize = max(16-length(input$checkbox_upset)*1, 5), col = "black"), rot = 0) #make font size change with number of checked boxes
+        grid.text(cs[od], 
+                  x = seq_along(cs), 
+                  y = unit(cs[od], "native") + unit(5, "pt"),
+                  default.units = "native", 
+                  just = c("center", "bottom"),
+                  gp = gpar(fontsize = max(16-length(input$checkbox_upset)*1, 5), 
+                            col = "black"), 
+                  rot = 0) #make font size change with number of checked boxes
       })
       p <- grid.grab()
       p <- plot_grid(p, nrow = 1)
@@ -989,11 +1019,10 @@ server <- function(input, output, session) {
     }
     
     else {
-      #if no data, print error message
-      print("no data!")
+      # If no data, print error message
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
-      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 1 variable.\n"), 
+      p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 1 variable."), 
                     cex = 1.6, col = "black")
       print(p)
     }
@@ -1007,38 +1036,39 @@ server <- function(input, output, session) {
   })
   
   
-  ##for stacked bar plot tab
+  ## For stacked bar plot tab --------------------------------------------------
   
   donor_stacked_bar_fxn <- function() {
-    #filter df for tissue of interest
+    # Filter df for tissue of interest
     tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue_stacked,  "-"))
     tissue_df <- tissue_df %>% merge(metadata, on = "ID")
     
-    #count number of donors in each group
+    # Count number of donors in each group
     calc_df <- tissue_df %>% merge(metadata, on = "ID") %>% summarise(n_counts = n(), .by = c(input$Grouping_stacked, "dataset"))
     
-    #to get order of stacked bar
+    # To get order of stacked bar
     summ_df <- calc_df %>% summarise(total_samps = sum(n_counts), .by = "dataset")
     summ_df <- summ_df[order(summ_df$total_samps, decreasing = TRUE),]
     data_factors <- summ_df$dataset
     
-    #set up color palette
+    # Set up color palette
     collections <- unique(metadata[,input$Grouping_stacked]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
     
-    #re-factor to get correct order
+    # Re-factor to get correct order
     calc_df$dataset <- factor(calc_df$dataset, levels = data_factors)
     
-    #plot
-    ggplot(calc_df, aes(y = n_counts, x = dataset)) + 
-      geom_bar(position = "stack", stat="identity", aes(fill = calc_df[,input$Grouping_stacked]), color = "white") + 
-      geom_text(data = summ_df, aes(x = dataset, y = total_samps+6, label = total_samps)) +
-      scale_fill_manual(values = collection_pal) +
-      ylab("Number of Donors") + xlab("Assay") +
-      ggtitle(input$Tissue_stacked) +
-      guides(fill=guide_legend(title=input$Grouping_stacked)) +
-      theme(axis.text.x = element_text(angle = 45, hjust=1), plot.title = element_text(hjust = 0.5))
+    # Plot
+    p <- ggplot(calc_df, aes(y = n_counts, x = dataset)) + 
+          geom_bar(position = "stack", stat="identity", aes(fill = calc_df[,input$Grouping_stacked]), color = "white") + 
+          geom_text(data = summ_df, aes(x = dataset, y = total_samps+6, label = total_samps)) +
+          scale_fill_manual(values = collection_pal) +
+          ylab("Number of Donors") + xlab("Assay") +
+          ggtitle(input$Tissue_stacked) +
+          guides(fill=guide_legend(title=input$Grouping_stacked)) +
+          theme(axis.text.x = element_text(angle = 45, hjust=1), plot.title = element_text(hjust = 0.5))
+    print(p)
     
   }
   
@@ -1048,14 +1078,14 @@ server <- function(input, output, session) {
   
   
   
-  ##for venn diagram tab
+  ## For Venn diagram tab ------------------------------------------------------
   
   venn_diag_fxn <- function() {
-    #get lists of positive donors to intersect
-    AAB_GADA_donors <- metadata %>% filter(`AAB-GADA Positive` == TRUE) %>% .$ID
-    AAB_IA2_donors <- metadata %>% filter(`AAB-IA2 Positive` == TRUE) %>% .$ID
-    AAB_IAA_donors <- metadata %>% filter(`AAB-IAA Positive` == TRUE) %>% .$ID
-    AAB_ZNT8_donors <- metadata %>% filter(`AAB-ZNT8 Positive` == TRUE) %>% .$ID
+    # Get lists of positive donors to intersect
+    AAB_GADA_donors <- metadata$ID[metadata$`AAB-GADA Positive` == TRUE]
+    AAB_IA2_donors <- metadata$ID[metadata$`AAB-IA2 Positive` == TRUE]
+    AAB_IAA_donors <- metadata$ID[metadata$`AAB-IAA Positive` == TRUE]
+    AAB_ZNT8_donors <- metadata$ID[metadata$`AAB-ZNT8 Positive` == TRUE]
     
     venn_list <- list("GADA positive" = AAB_GADA_donors,
                       "IA2 positive" = AAB_IA2_donors,
@@ -1075,7 +1105,7 @@ server <- function(input, output, session) {
 
 
 
-  #make plot downloaders
+  # Make plot downloaders ------------------------------------------------------
   output$DownloadBar <- downloadHandler(
     filename = function() { paste0("PanKbase_BarPlot_", Sys.time(), ".png") },
     content = function(file) {
@@ -1163,5 +1193,5 @@ server <- function(input, output, session) {
 }
 
 
-# Run the application 
+## Run the application 
 shinyApp(ui = ui, server = server)
