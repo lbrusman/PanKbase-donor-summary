@@ -30,13 +30,12 @@ library(ggplotify)
 set.seed(123)
 
 ## To start, we need to set up some global variables that we want to use in
-## all functions 
-## =============================================================================
+## all functions ===============================================================
 
 # Read in metadata files
 metadata <- read.csv("data/pankbase_human_donor_report_2025_5_27_17h_8m.csv")
 
-# Change capitalization of some metadata fields
+# Change capitalization and naming of some metadata fields
 metadata$Description.of.diabetes.status <- recode(metadata$Description.of.diabetes.status,
                                                   "non-diabetic" = "No diabetes",
                                                   "type 1 diabetes" = "Type 1 diabetes",
@@ -51,9 +50,11 @@ metadata$Ethnicities <- recode(na_if(metadata$Ethnicities, ""),
                                "African American,Black" = "African American, Black",
                                "Caucasian" = "White",
                                .missing = "Unknown")
+
 metadata$Sex <- recode(metadata$Sex,
                        female = "Female",
                        male = "Male")
+
 metadata$Collections <- recode(metadata$Collections,
                                "IIDP,Prodo" = "IIDP")
 
@@ -65,8 +66,6 @@ metadata$Cause.of.Death <- recode(na_if(metadata$Cause.of.Death, ""),
                                   "Cerebral Edema (DKA)" = "Cerebral edema (DKA)",
                                   "IHC" = "Cerebrovascular/Stroke",
                                   .missing = "Unknown")
-
-
 
 # Rename columns to friendly names
 metadata <- metadata %>% rename("Program" = Collections,
@@ -85,6 +84,7 @@ metadata <- metadata %>% rename("Program" = Collections,
 # Change NA AAB status to "Unknown"
 metadata <- metadata %>% mutate(across(starts_with("AAB."), ~ifelse(is.na(.x), "Unknown", .x)))
 
+# Now change variable names to be friendly
 metadata <- metadata %>% rename("AAB-GADA Positive" = AAB.GADA.POSITIVE,
                                 "AAB-IA2 Positive" = AAB.IA2.POSITIVE,
                                 "AAB-IAA Positive" = AAB.IAA.POSITIVE,
@@ -127,13 +127,13 @@ islet_df <- all_donor_df %>% filter(dataset_tissue %in% c("Islet",  "-"))
 # Set up universal color palette
 all_palette <- colorRampPalette(c("#FFBE0B", "#FB5607", "#FF006E", "#8338EC", "#3A86FF"))
 
-# Set default font size for ggplot
+# Set default theme and font size for ggplot
 ggplot2::theme_set(theme_classic(base_size=18))
 
 
 
 
-# Define UI for application ====================================================
+## Define UI for application ===================================================
 
 ui <- fluidPage(    
   shinybrowser::detect(),
@@ -152,7 +152,7 @@ ui <- fluidPage(
 }
   "))),
   
-  # Make tabset on main panel --------------------------------------------------
+  ## Make tabset on main panel -------------------------------------------------
   
   tabsetPanel(
 
@@ -177,7 +177,6 @@ ui <- fluidPage(
                                       title = "Choose whether to remove donors whose metadata for that variable is not currently in PanKbase"),
                             downloadButton("DownloadStacked", 
                                            "Download Stacked Bar Plot")
-                            
                           ),
                           mainPanel(
                             p(),
@@ -292,7 +291,6 @@ ui <- fluidPage(
                             p(),
                             p("Select metrics on the left to calculate and plot a principal component analysis (PCA) of the donor metadata. Each point in the plot represents one donor. For more information about each donor, explore the ", tags$a(href = "https://data.pankbase.org", "Data Library", .noWS = "outside"), ".", style = "font-weight:400"),
                             plotOutput("pca_plot"))
-                          
                         ),
                         sidebarLayout(
                           sidebarPanel(
@@ -307,10 +305,7 @@ ui <- fluidPage(
                             plotOutput("pca_contribs"))
                         )
                )
-               
-               
              )
-      
     ),
     
     tabPanel("Assays-by-Donors",
@@ -344,7 +339,6 @@ ui <- fluidPage(
                             p("Select checkboxes on the left to see the number of donors with data available for specific combinations of assays. ", tags$b("Important!"), " These intersections are ", tags$i("inclusive", style = "font-weight:400"), "(e.g. if a donor has Genotyping, scRNAseq, and RNAseq data available, they are included in the count for Genotyping+scRNAseq as well as the count for Genotyping+scRNAseq+RNAseq. This means that an individual donor may be represented in multiple intersection groups. For more information about each donor, explore the ", tags$a(href = "https://data.pankbase.org", "Data Library", .noWS = "outside"), ".", style = "font-weight:400"),
                             plotOutput("upset"))
                         )
-                        
                ),
                tabPanel("Stacked Bar Plot",
                         sidebarLayout(
@@ -375,9 +369,7 @@ ui <- fluidPage(
                             ". For more information about each donor, explore the ", tags$a(href = "https://data.pankbase.org", "Data Library", .noWS = "outside"), ".", style = "font-weight:400"),
                           p(),
                           plotOutput("venndiag")))
-               
-             )
-             )),
+             ))),
     tabPanel("Assay Descriptions",
              h3("Assays included in the Donor Summary Tool are defined as follows:"),
              h1(),
@@ -400,8 +392,7 @@ ui <- fluidPage(
              h5(strong("TCR-seq:"), "paired single cell measurement of T cell receptor sequence and gene transcript abundance"),
              h5(strong("CITE-seq:"), "paired single cell measurement of surface protein markers and gene transcript abundance"),
              h5(strong("Flow cytometry:"), "measurement of physical and/or chemical characteristics of cells in a sample, for example to quantify cell type abundance")))
-    
-    
+
 )
 
 
