@@ -1,5 +1,5 @@
-# ![](files/PanKbase_logo-black-tagline.svg)
-<img src="files/color_bar.svg" width="100%"/>
+# ![](files/PanKbase_logo-black-tagline.svg) &nbsp;&nbsp; <span style = "font-family:'google', 'Open Sans', sans-serif; font-weight: 600;" > Donor Summary App
+<img src="files/color_bar.svg" width="100%" align="center"/>
 
 This is the Shiny application that runs the Donor Summary Tool for [PanKbase](https://pankbase.org).
 See it live at [https://pankbase.org/donor-metadata.html](https://pankbase.org/donor-metadata.html).
