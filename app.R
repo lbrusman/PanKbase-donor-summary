@@ -1,6 +1,6 @@
 #
 # This is the Shiny web application that runs the donor summary browser for PanKbase
-# See it live at https://dev.pankbase.org/donor-metadata.html
+# See it live at https://pankbase.org/donor-metadata.html
 #
 
 #load packages
@@ -61,9 +61,9 @@ metadata$Collections <- recode(metadata$Collections,
 metadata$Cause.of.Death <- recode(na_if(metadata$Cause.of.Death, ""),
                                   "Cerebrovascular/stroke" = "Cerebrovascular/Stroke",
                                   "Head Trauma" = "Head trauma",
-                                  "ICH/stroke" = "ICH/Stroke",
+                                  "ICH/stroke" = "Cerebrovascular/Stroke",
                                   "Cerebral Edema (DKA)" = "Cerebral edema (DKA)",
-                                  # "IHC" = "ICH",
+                                  "IHC" = "Cerebrovascular/Stroke",
                                   .missing = "Unknown")
 
 
@@ -524,22 +524,22 @@ server <- function(input, output, session) {
       metadata_filt <- metadata
     }
     
-    #remove values that are NA
+    # Remove values that are NA
     metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$MetrictoPlot_ridge]),]
     metadata_filt <- metadata_filt[order(metadata_filt[,input$Variable_ridge]),]
     metadata_filt[,input$Variable_ridge] <- metadata_filt[,input$Variable_ridge] %>% fct_rev()
     
-    #filter because we must have at least 3 data points to plot a ridge
+    # Filter because we must have at least 3 data points to plot a ridge
     metadata_filt <- metadata_filt %>% filter(n() > 2, .by = input$Variable_ridge)
     
     
     if (nrow(metadata_filt) > 1) {
       # Make a plot if there is data to make a plot
-      p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot_ridge], y = metadata_filt[,input$Variable_ridge], fill = metadata_filt[,input$Variable_ridge])) + 
+      p <- ggplot(metadata_filt, aes(x = metadata_filt[,input$MetrictoPlot_ridge], y = metadata_filt[,input$Variable_ridge], fill = fct_rev(metadata_filt[,input$Variable_ridge]))) + 
             geom_density_ridges(scale = 0.9,
                                 quantile_lines = TRUE, quantiles = 2) +
             scale_fill_manual(values = collection_pal) +
-            xlim(c(0, max(metadata_filt[,input$MetrictoPlot_ridge]))) + #limit minimum of ridge to zero
+            xlim(c(0, max(metadata_filt[,input$MetrictoPlot_ridge]))) + # Limit minimum of ridge to zero
             xlab(input$MetrictoPlot_ridge) +
             ylab(input$Variable_ridge) +
             guides(fill=guide_legend(title=input$Variable_ridge)) +
@@ -568,7 +568,7 @@ server <- function(input, output, session) {
   ## For clustering heatmap tab ------------------------------------------------
   
   heatmap_fxn <- function() {
-    #set up colors for plot
+    # Set up colors for plot
     collections <- unique(metadata$Program) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
@@ -578,16 +578,16 @@ server <- function(input, output, session) {
     names(collection_pal_diab) <- collections_diab
     
     if (length(input$checkbox_heatmap) >= 2) {
-      #create matrix to plot
+      # Create matrix to plot
       metadata_vars <- metadata[,c("Program", "Description of diabetes status", input$checkbox_heatmap)]
-      metadata_vars <- metadata_vars[complete.cases(metadata[,continuous_vars]),] #make sure no donors with NAs
-      metadata_vars[,input$checkbox_heatmap] <- lapply(metadata_vars[,input$checkbox_heatmap], as.numeric) #make sure columns to plot are numeric
-      metadata_mat <- metadata_vars[,input$checkbox_heatmap] %>% as.matrix() %>% scale() #scale matrix
+      metadata_vars <- metadata_vars[complete.cases(metadata[,continuous_vars]),] # Make sure no donors with NAs
+      metadata_vars[,input$checkbox_heatmap] <- lapply(metadata_vars[,input$checkbox_heatmap], as.numeric) # Make sure columns to plot are numeric
+      metadata_mat <- metadata_vars[,input$checkbox_heatmap] %>% as.matrix() %>% scale() # Scale matrix
       
-      #set up color palette for the heatmap itself
+      # Set up color palette for the heatmap itself
       col_fun <- colorRamp2(c(-4, 0, 4), hcl_palette = "Viridis")
       
-      #draw heatmap
+      # Draw heatmap
       row_ha <- rowAnnotation(Program = metadata_vars$Program, 
                               `Diabetes status` = metadata_vars$`Description of diabetes status`, 
                               col = list(Program = collection_pal, 
@@ -595,7 +595,7 @@ server <- function(input, output, session) {
                               annotation_name_gp = gpar(fontsize = 16),
                               annotation_legend_param = list(title_gp = gpar(fontsize = 16, fontface = "bold"),
                                                              labels_gp = gpar(fontsize = 16)))
-      p = grid.grabExpr(draw(Heatmap(metadata_mat, #need grid.grabExpr to save plot without png
+      p = grid.grabExpr(draw(Heatmap(metadata_mat, # Need grid.grabExpr to save plot without png
                                      right_annotation = row_ha,
                                      name = "Scaled value", 
                                      show_row_names = FALSE, row_title = "Donors", 
@@ -607,12 +607,12 @@ server <- function(input, output, session) {
                                                                  labels_gp = gpar(fontsize = 16)),
                                      col = col_fun), 
                              padding = unit(c(5, 5, 5, 5), "mm"))) 
-      p <- plot_grid(p, nrow = 1) #need to do this to save without png device
+      p <- plot_grid(p, nrow = 1) # Need to do this to save without png device
       print(p)
     }
     
     else {
-      #if no data, print error message
+      # If no data, print error message
       par(mar = c(0,0,0,0))
       p <- plot(c(0, 1), c(0, 1), ann = F, bty = 'n', type = 'n', xaxt = 'n', yaxt = 'n')
       p <- p + text(x = 0.5, y = 0.5, paste("Please select at least 2 variables."), 
@@ -625,14 +625,15 @@ server <- function(input, output, session) {
   output$heatmap <- renderPlot({
     heatmap_fxn()
   },
-  height = 600) #manually set height of heatmap
+  height = 600) # Manually set height of heatmap
   
   
   ## For correlation matrix tab ------------------------------------------------
+  
   corr_plot_fxn <- function() {
-    #make sure there are at least two variables to correlate
+    # Make sure there are at least two variables to correlate
     if (length(input$checkbox_corr) >= 2) {
-      #get values you want
+      # Get values you want
       metadata_vars <- metadata[,c("Program", input$checkbox_corr)]
       metadata_vars[,input$checkbox_corr] <- lapply(metadata_vars[,input$checkbox_corr], as.numeric)
       
@@ -645,7 +646,7 @@ server <- function(input, output, session) {
         legend_title <- "Spearman Rho"
       }
       
-      #get correlations
+      # Get correlations
       corr_all <- rcorr(as.matrix(metadata_vars[,-1]),type=input$corr_type_mat)
       corr <- corr_all$r
       p_mat <- corr_all$P
@@ -719,7 +720,7 @@ server <- function(input, output, session) {
   ## For scatter plot tab ------------------------------------------------------
   
   scatterPlot_fxn <- function() {
-    #set up colors for plot
+    # Set up colors for plot
     collections <- unique(metadata[,input$Color_scatter]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
@@ -792,7 +793,7 @@ server <- function(input, output, session) {
       groups <- factor(df_pca[,input$Color_PCA])
       unq_pal <- collection_pal[names(collection_pal) %in% unique(groups)]
       
-      # Plot pca with color
+      # Plot PCA with color
       if (input$Ellipses == "No") {
         p <- fviz_pca_ind(res.pca,
                           col.ind = groups,
@@ -855,7 +856,7 @@ server <- function(input, output, session) {
                     cex = 1.6, col = "black")
     }
     
-    p <- as.ggplot(p) #need to do this to save without png device
+    p <- as.ggplot(p) # Need to do this to save without png device
     print(p)
     
   }
@@ -889,7 +890,7 @@ server <- function(input, output, session) {
                     cex = 1.6, col = "black")
     }
     
-    p <- as.ggplot(p) #need to do this to save without png device
+    p <- as.ggplot(p) # Need to do this to save without png device
     print(p)
     
   }
@@ -958,7 +959,7 @@ server <- function(input, output, session) {
                             column_title_gp = gpar(fontsize = 18), 
                             column_title_side = "bottom",
                             padding = unit(c(1, 1, 1, 1), "cm")))
-    p <- plot_grid(p, nrow = 1) #need to do this to save plot without png device
+    p <- plot_grid(p, nrow = 1) # Need to do this to save plot without png device
     print(p)
     
   }
@@ -988,7 +989,7 @@ server <- function(input, output, session) {
       m1 <- make_comb_mat(lt, mode = "intersect")
       cs = comb_size(m1)
       
-      # Plot upset plot
+      # Plot UpSet plot
       ht = UpSet(m1,
                  right_annotation = NULL,
                  comb_order = order(comb_degree(m1), -cs),
@@ -1039,7 +1040,7 @@ server <- function(input, output, session) {
   })
   
   
-  ## For stacked bar plot tab --------------------------------------------------
+  ## For donor stacked bar plot tab --------------------------------------------
   
   donor_stacked_bar_fxn <- function() {
     # Filter df for tissue of interest
