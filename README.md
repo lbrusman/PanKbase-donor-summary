@@ -3,6 +3,6 @@
 This is the Shiny application that runs the donor summary tool for [PanKbase](https://pankbase.org).
 See it live at [https://pankbase.org/donor-metadata.html](https://pankbase.org/donor-metadata.html).
 
-![](files/app_recording.gif)
+All data used in this app is downloadable from the [PanKbase Data Library](https://data.pankbase.org/multireport/?type=Donor).
 
- All data used in this app is downloadable from the [PanKbase Data Library](https://data.pankbase.org/multireport/?type=Donor).
+![](files/app_recording.gif)
