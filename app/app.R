@@ -30,42 +30,39 @@ library(ggplotify)
 set.seed(123)
 
 ## To start, we need to set up some global variables that we want to use in
-## all functions ===============================================================
+## all functions 
+## =============================================================================
 
 # Read in metadata files
-metadata <- read.csv("data/pankbase_human_donor_report_2025_5_27_17h_8m.csv")
+metadata <- read.table("data/pankbase_human_donor_LEB_update_251210_v4.txt", header = TRUE, sep = "\t")
+unique(metadata$Collections)
+which_assays <- read.csv("data/pankbase_human_donor_report_2025_12_4_21h_57m.csv")
 
-# Change capitalization and naming of some metadata fields
-metadata$Description.of.diabetes.status <- recode(metadata$Description.of.diabetes.status,
-                                                  "non-diabetic" = "No diabetes",
-                                                  "type 1 diabetes" = "Type 1 diabetes",
-                                                  "type 2 diabetes" = "Type 2 diabetes",
-                                                  "cystic fibrosis diabetes" = "Cystic fibrosis diabetes",
-                                                  "gestational diabetes" = "Gestational diabetes",
-                                                  "diabetes unspecified" = "Diabetes unspecified",
-                                                  "steroid-induced diabetes" = "Steroid-induced diabetes",
-                                                  "monogenic diabetes" = "Monogenic diabetes")
+#metadata <- metadata %>% filter(Collections != "-")
 
-metadata$Ethnicities <- recode(na_if(metadata$Ethnicities, ""),
-                               "African American,Black" = "African American, Black",
-                               "Caucasian" = "White",
+# # Change capitalization of some metadata fields
+# metadata$Description.of.diabetes.status <- recode(metadata$Description.of.diabetes.status,
+#                                                   "control without diabetes" = "No diabetes",
+#                                                   "type 1 diabetes" = "Type 1 diabetes",
+#                                                   "type 2 diabetes" = "Type 2 diabetes",
+#                                                   "cystic fibrosis-related diabetes" = "Cystic fibrosis-related diabetes",
+#                                                   "gestational diabetes" = "Gestational diabetes",
+#                                                   "diabetes unspecified" = "Diabetes unspecified",
+#                                                   "monogenic diabetes" = "Monogenic diabetes",
+#                                                   "-" = "Unknown")
+# 
+# metadata$Ethnicities <- recode(metadata$Ethnicities,
+#                                "-" = "Unknown"
+#                                )
+# metadata$Gender <- recode(metadata$Gender,
+#                        "female" = "Female",
+#                        "male" = "Male")
+metadata$Collections <- recode(na_if(metadata$Collections, ""),
+                               "IIDP,Prodo" = "IIDP",
                                .missing = "Unknown")
 
-metadata$Sex <- recode(metadata$Sex,
-                       female = "Female",
-                       male = "Male")
+metadata[metadata == "-"] <- "Unknown"
 
-metadata$Collections <- recode(metadata$Collections,
-                               "IIDP,Prodo" = "IIDP")
-
-# Rename values that have different capitalization so they get grouped together and change blanks to unknown
-metadata$Cause.of.Death <- recode(na_if(metadata$Cause.of.Death, ""),
-                                  "Cerebrovascular/stroke" = "Cerebrovascular/Stroke",
-                                  "Head Trauma" = "Head trauma",
-                                  "ICH/stroke" = "Cerebrovascular/Stroke",
-                                  "Cerebral Edema (DKA)" = "Cerebral edema (DKA)",
-                                  "IHC" = "Cerebrovascular/Stroke",
-                                  .missing = "Unknown")
 
 # Rename columns to friendly names
 metadata <- metadata %>% rename("Program" = Collections,
@@ -84,21 +81,23 @@ metadata <- metadata %>% rename("Program" = Collections,
 # Change NA AAB status to "Unknown"
 metadata <- metadata %>% mutate(across(starts_with("AAB."), ~ifelse(is.na(.x), "Unknown", .x)))
 
-# Now change variable names to be friendly
 metadata <- metadata %>% rename("AAB-GADA Positive" = AAB.GADA.POSITIVE,
                                 "AAB-IA2 Positive" = AAB.IA2.POSITIVE,
                                 "AAB-IAA Positive" = AAB.IAA.POSITIVE,
                                 "AAB-ZNT8 Positive" = AAB.ZNT8.POSITIVE)
 
 # Get all categorical variables we want to plot
-categorical_vars <- c("Program", "Description of diabetes status", "Cause of death", "Sex", "Ethnicity",
+categorical_vars <- c("Program", "Description of diabetes status", "Cause of death", "Gender", "Ethnicity",
                       "AAB-GADA Positive", "AAB-IA2 Positive", "AAB-IAA Positive", "AAB-ZNT8 Positive")
 # Get all continuous variables we want to plot
 continuous_vars <- c("Age (years)", "BMI", "C. Peptide (ng/ml)", "HbA1C percentage", "Hospital stay (hours)",
                      "AAB-GADA value (unit/ml)", "AAB-IA2 value (unit/ml)", "AAB-IAA value (unit/ml)", "AAB-ZNT8 value (unit/ml)")
 
+#change continuous to numeric
+metadata[continuous_vars] <- sapply(metadata[continuous_vars], as.numeric)
+
 # Wrangle donor-by-assay data here
-data_avail <- metadata %>% select(c("ID", "Data.Available")) %>% filter(Data.Available != "")
+data_avail <- which_assays %>% select(c("ID", "Data.Available")) %>% filter(Data.Available != "")
 data_avail$Data.Available2 <- gsub("\'","\"", data_avail$Data.Available, fixed=TRUE)
 data_avail$Data.Available3 <- gsub("[[:space:]]", "", data_avail$Data.Available2, fixed=TRUE)
 
@@ -120,6 +119,9 @@ all_donor_df$dataset <- recode(all_donor_df$dataset,
                                "RNAseq" = "RNA-seq",
                                "scRNAseq" = "scRNA-seq",
                                "snATACseq" = "snATAC-seq")
+all_donor_df$Accession <- gsub("/human-donors/", "", all_donor_df$ID)
+all_donor_df$Accession <- gsub("/", "", all_donor_df$Accession)
+
 
 islet_df <- all_donor_df %>% filter(dataset_tissue %in% c("Islet",  "-"))
 
@@ -127,13 +129,13 @@ islet_df <- all_donor_df %>% filter(dataset_tissue %in% c("Islet",  "-"))
 # Set up universal color palette
 all_palette <- colorRampPalette(c("#FFBE0B", "#FB5607", "#FF006E", "#8338EC", "#3A86FF"))
 
-# Set default theme and font size for ggplot
+# Set default font size for ggplot
 ggplot2::theme_set(theme_classic(base_size=18))
 
 
 
 
-## Define UI for application ===================================================
+# Define UI for application ====================================================
 
 ui <- fluidPage(    
   shinybrowser::detect(),
@@ -152,7 +154,7 @@ ui <- fluidPage(
 }
   "))),
   
-  ## Make tabset on main panel -------------------------------------------------
+  # Make tabset on main panel --------------------------------------------------
   
   tabsetPanel(
 
@@ -177,6 +179,7 @@ ui <- fluidPage(
                                       title = "Choose whether to remove donors whose metadata for that variable is not currently in PanKbase"),
                             downloadButton("DownloadStacked", 
                                            "Download Stacked Bar Plot")
+                            
                           ),
                           mainPanel(
                             p(),
@@ -291,6 +294,7 @@ ui <- fluidPage(
                             p(),
                             p("Select metrics on the left to calculate and plot a principal component analysis (PCA) of the donor metadata. Each point in the plot represents one donor. For more information about each donor, explore the ", tags$a(href = "https://data.pankbase.org", "Data Library", .noWS = "outside"), ".", style = "font-weight:400"),
                             plotOutput("pca_plot"))
+                          
                         ),
                         sidebarLayout(
                           sidebarPanel(
@@ -305,7 +309,10 @@ ui <- fluidPage(
                             plotOutput("pca_contribs"))
                         )
                )
+               
+               
              )
+      
     ),
     
     tabPanel("Assays-by-Donors",
@@ -339,6 +346,7 @@ ui <- fluidPage(
                             p("Select checkboxes on the left to see the number of donors with data available for specific combinations of assays. ", tags$b("Important!"), " These intersections are ", tags$i("inclusive", style = "font-weight:400"), "(e.g. if a donor has Genotyping, scRNAseq, and RNAseq data available, they are included in the count for Genotyping+scRNAseq as well as the count for Genotyping+scRNAseq+RNAseq. This means that an individual donor may be represented in multiple intersection groups. For more information about each donor, explore the ", tags$a(href = "https://data.pankbase.org", "Data Library", .noWS = "outside"), ".", style = "font-weight:400"),
                             plotOutput("upset"))
                         )
+                        
                ),
                tabPanel("Stacked Bar Plot",
                         sidebarLayout(
@@ -369,7 +377,9 @@ ui <- fluidPage(
                             ". For more information about each donor, explore the ", tags$a(href = "https://data.pankbase.org", "Data Library", .noWS = "outside"), ".", style = "font-weight:400"),
                           p(),
                           plotOutput("venndiag")))
-             ))),
+               
+             )
+             )),
     tabPanel("Assay Descriptions",
              h3("Assays included in the Donor Summary Tool are defined as follows:"),
              h1(),
@@ -392,7 +402,8 @@ ui <- fluidPage(
              h5(strong("TCR-seq:"), "paired single cell measurement of T cell receptor sequence and gene transcript abundance"),
              h5(strong("CITE-seq:"), "paired single cell measurement of surface protein markers and gene transcript abundance"),
              h5(strong("Flow cytometry:"), "measurement of physical and/or chemical characteristics of cells in a sample, for example to quantify cell type abundance")))
-
+    
+    
 )
 
 
@@ -517,6 +528,8 @@ server <- function(input, output, session) {
     
     # Remove values that are NA
     metadata_filt <- metadata_filt[!is.na(metadata_filt[,input$MetrictoPlot_ridge]),]
+    metadata_filt <- metadata_filt[metadata_filt[,input$MetrictoPlot_ridge] != "Unknown",]
+    metadata_filt[,input$MetrictoPlot_ridge] <- as.numeric(metadata_filt[,input$MetrictoPlot_ridge])
     metadata_filt <- metadata_filt[order(metadata_filt[,input$Variable_ridge]),]
     metadata_filt[,input$Variable_ridge] <- metadata_filt[,input$Variable_ridge] %>% fct_rev()
     
@@ -620,7 +633,6 @@ server <- function(input, output, session) {
   
   
   ## For correlation matrix tab ------------------------------------------------
-  
   corr_plot_fxn <- function() {
     # Make sure there are at least two variables to correlate
     if (length(input$checkbox_corr) >= 2) {
@@ -896,24 +908,26 @@ server <- function(input, output, session) {
   donor_matrix_fxn <- function() {
     # Filter df for tissue of interest
     tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue_mat,  "-"))
-    
+
     # Get number of donors for each assay, then sort descending so they are plotted in that order
-    df_wide <- tissue_df %>% pivot_wider(names_from = dataset, id_cols = ID, values_from = dataset_tissue)
+    df_wide <- tissue_df %>% pivot_wider(names_from = dataset, id_cols = Accession, values_from = dataset_tissue)
     cols <- colnames(df_wide)[-1]
-    df_wide[cols] <- +(!is.na(df_wide[cols]))
-    df_wide <- df_wide %>% merge(metadata, on = "ID")
+    df_wide[,cols] <- +(!is.na(df_wide[,cols]))
+    df_wide <- df_wide %>% merge(metadata, on = "Accession")
     df_wide$sum <- rowSums(df_wide[cols])
     df_wide <- df_wide[order(df_wide$`Description of diabetes status`, -df_wide$sum),]
-    
+
     # Get out columns you want to plot in matrix
+    rownames(df_wide) <- NULL
     to_plot <- as.matrix(df_wide[,cols]) %>% t()
-    
+    # print(head(to_plot))
+
     # Set up colors
     col_fun <- colorRamp2(c(0, 1), c("#fafafa", "#219197"))
     collections <- unique(metadata[,"Description of diabetes status"]) %>% sort()
     collection_pal <- all_palette(length(collections))
     names(collection_pal) <- collections
-    color_this_plot <- collection_pal[c("No diabetes", "Type 1 diabetes", "Type 2 diabetes")]
+    color_this_plot <- collection_pal[c("Control Without Diabetes", "Type 1 Diabetes", "Type 2 Diabetes")]
     
     # Get top heatmap annotation
     ha <- HeatmapAnnotation(`Diabetes status` = df_wide$`Description of diabetes status`,
@@ -972,7 +986,7 @@ server <- function(input, output, session) {
       # Get list of donors in each dataset
       lt <- list()
       for (i in unique(tissue_df$dataset)) {
-        dons <- tissue_df$ID[tissue_df$dataset == i]
+        dons <- tissue_df$Accession[tissue_df$dataset == i]
         lt[[i]] <- dons
       }
       
@@ -1031,15 +1045,15 @@ server <- function(input, output, session) {
   })
   
   
-  ## For donor stacked bar plot tab --------------------------------------------
+  ## For stacked bar plot tab --------------------------------------------------
   
   donor_stacked_bar_fxn <- function() {
     # Filter df for tissue of interest
     tissue_df <- all_donor_df %>% filter(dataset_tissue %in% c(input$Tissue_stacked,  "-"))
-    tissue_df <- tissue_df %>% merge(metadata, on = "ID")
+    tissue_df <- tissue_df %>% merge(metadata, on = "Accession")
     
     # Count number of donors in each group
-    calc_df <- tissue_df %>% merge(metadata, on = "ID") %>% summarise(n_counts = n(), .by = c(input$Grouping_stacked, "dataset"))
+    calc_df <- tissue_df %>% merge(metadata, on = "Accession") %>% summarise(n_counts = n(), .by = c(input$Grouping_stacked, "dataset"))
     
     # To get order of stacked bar
     summ_df <- calc_df %>% summarise(total_samps = sum(n_counts), .by = "dataset")
@@ -1080,10 +1094,10 @@ server <- function(input, output, session) {
   
   venn_diag_fxn <- function() {
     # Get lists of positive donors to intersect
-    AAB_GADA_donors <- metadata$ID[metadata$`AAB-GADA Positive` == TRUE]
-    AAB_IA2_donors <- metadata$ID[metadata$`AAB-IA2 Positive` == TRUE]
-    AAB_IAA_donors <- metadata$ID[metadata$`AAB-IAA Positive` == TRUE]
-    AAB_ZNT8_donors <- metadata$ID[metadata$`AAB-ZNT8 Positive` == TRUE]
+    AAB_GADA_donors <- metadata$Center.Donor.ID[metadata$`AAB-GADA Positive` == TRUE]
+    AAB_IA2_donors <- metadata$Center.Donor.ID[metadata$`AAB-IA2 Positive` == TRUE]
+    AAB_IAA_donors <- metadata$Center.Donor.ID[metadata$`AAB-IAA Positive` == TRUE]
+    AAB_ZNT8_donors <- metadata$Center.Donor.ID[metadata$`AAB-ZNT8 Positive` == TRUE]
     
     venn_list <- list("GADA positive" = AAB_GADA_donors,
                       "IA2 positive" = AAB_IA2_donors,
